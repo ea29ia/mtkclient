@@ -943,15 +943,25 @@ class DAXML(metaclass=LogBase):
         #    handlers load a deny flag byte from the parsed per-partition
         #    policy struct and bail out when it is non-zero:
         #      site1 0x400021a0: LDRB r0,[fp,#-0x8d]; CMP r0,#0; BEQ allow
-        #      site2 0x4000392c: LDRB r0,[sp,#3];     CMP r0,#0; BEQ allow
-        #    Forcing the flag byte to 0 makes the check always pass. (A third
-        #    site in WRITE-PARTITIONS 0x40002598 keys off a GLOBAL at
-        #    0x40054314, not the policy struct - not patched here.)
+        #    handler. (Site 0x4000392c actually belongs to the ERASE-FLASH
+        #    handler - see the ERASE_DENY gate below. A third site in
+        #    WRITE-PARTITIONS 0x40002598 keys off a GLOBAL at 0x40054314,
+        #    not the policy struct - not patched here.)
         if _os.environ.get("OPLUS_WRITE_BYPASS", "0") == "1":
             patches.append(("WRITE-PARTITION deny-check 0x400021a0 -> MOV R0,#0",
                             0x400021a0, b"\x00\x00\xa0\xe3"))
-            patches.append(("WRITE-FLASH deny-check 0x4000392c -> MOV R0,#0",
-                            0x4000392c, b"\x00\x00\xa0\xe3"))
+            # NOTE: 0x4000392c belongs to the ERASE-FLASH handler, NOT
+            # WRITE-FLASH (re-consistency audit). The old "WRITE-FLASH
+            # deny-check 0x4000392c" label was wrong; forcing the flag byte
+            # to 0 there removes erase protection, which is dangerous for
+            # partitions that must never be erased. Gate it off by default
+            # behind OPLUS_PATCH_ERASE_DENY=1.
+            if _os.environ.get("OPLUS_PATCH_ERASE_DENY", "0") == "1":
+                patches.append(("ERASE-FLASH deny-check 0x4000392c -> MOV R0,#0",
+                                0x4000392c, b"\x00\x00\xa0\xe3"))
+            else:
+                self.info("ERASE-FLASH deny-check patch skipped "
+                          "(set OPLUS_PATCH_ERASE_DENY=1 to enable; target 0x4000392c)")
             # The deny that actually fires for WRITE-FLASH(seccfg) is INSIDE the
             # WRITE-FLASH handler (0x40002e60) at 0x400031d4: after the policy
             # parse (BL 0x4002cf68) it checks TWO flag bytes -
@@ -978,19 +988,31 @@ class DAXML(metaclass=LogBase):
                             0x4002f804, ret_r0))
             patches.append(("entity-compare deny gate 0x4002fcf4 BEQ -> B",
                             0x4002fcf4, b"\x08\x00\x00\xea"))
-            # The SEC seccfg service REGENERATES seccfg with ITS OWN state
-            # value on every write (observed: any full-partition write comes
-            # back as lock_state=2/MP_DEFAULT regardless of the payload).
-            # The state writer: sec service stores 1 or 2 into the state
-            # global 0x4006E9F0:
-            #   0x40034ffc: MOV r1,#1 (LOCKED path)
-            #   0x40035014: MOV r1,#2 (MP_DEFAULT path)
-            # Patch BOTH to write 3 (UNLOCK) so the regenerated seccfg
-            # carries lock_state=3.
-            patches.append(("SEC seccfg state writer 0x40034ffc MOV r1,#1 -> #3",
-                            0x40035000, b"\x03\x10\xa0\xe3"))
-            patches.append(("SEC seccfg state writer 0x40035014 MOV r1,#2 -> #3",
-                            0x40035014, b"\x03\x10\xa0\xe3"))
+            # The SEC seccfg state writer sites 0x40034ffc/0x40035014 store
+            # the SLOT IDENTITY (1/2), not the lock value, into the global
+            # 0x4006E9F0 (re-consistency audit / re-sec-dispatch notes):
+            # forcing 3 there makes sec_get_seccfg error out -> fail-safe
+            # LOCKED. Do NOT patch these by default.
+            if _os.environ.get("OPLUS_PATCH_STATE_WRITERS", "0") == "1":
+                patches.append(("SEC seccfg state writer 0x40034ffc MOV r1,#1 -> #3",
+                                0x40035000, b"\x03\x10\xa0\xe3"))
+                patches.append(("SEC seccfg state writer 0x40035014 MOV r1,#2 -> #3",
+                                0x40035014, b"\x03\x10\xa0\xe3"))
+            else:
+                self.info("SEC state-writer patches skipped (0x40035000/0x40035014 hold "
+                          "SLOT IDENTITY 1/2, not the lock value; set OPLUS_PATCH_STATE_WRITERS=1 "
+                          "to force anyway - may cause seccfg read to fail-safe LOCKED)")
+            # The correct lever for making an uploaded seccfg accepted is the
+            # digest-acceptance branch in the SEC seccfg READER (see
+            # docs/notes/re-reserve2-master.md: main@+0x00, backup@+0x3C,
+            # MMMM, hash@+0x1C; the main-accept branch at 0x40034f94 is
+            #     0x40034f94: 1800000a  beq 0x40034ffc
+            # and only takes it when the hash verifies). Force the branch to
+            # unconditional (same imm24 0x18, cond EQ -> AL):
+            #     0xEA000018  b 0x40034ffc
+            # so the main record is accepted without hash verification.
+            patches.append(("SEC seccfg reader digest-accept BEQ 0x40034f94 -> B (0x40034ffc)",
+                            0x40034f94, b"\x18\x00\x00\xea"))
 
         if not patches:
             self.warning("No OPLUS runtime patch targets found in DA2")
