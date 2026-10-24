@@ -40,23 +40,22 @@ except ImportError:
 VID = int(os.environ.get("PLANE_VID", "0x22d9"), 16)
 PID = int(os.environ.get("PLANE_PID", "0x0006"), 16)
 
-# Meaningful hits only. A bare 'U' (0x55) right after our first OUT is
-# treated as a probable SYNC ACK (seen live, reproducible), NOT a token
-# response — it must not stop the variant round-robin.
-MAGICS = (b"TOOBTSAF", b"AT+OK", b"forbidden", b"ATEM", b"DISCONNECT")
+# (token, expected response, gated?)
+TOKENS = [
+    ("FASTBOOT", "TOOBTSAF", False),
+    ("AT+NBOOT", "AT+OK", False),
+    ("METAMETA", "ATEM0001/2 or forbidden", True),  # control probes
+    ("FACTFACT", "TCAFTCAF or forbidden", True),
+]
+
+# Meaningful hits only (a bare 'U'/READY and reverb garbage don't count).
+MAGICS = (b"TOOBTSAF", b"AT+OK", b"forbidden", b"ATEM", b"TCAFTCAF",
+          b"DISCONNECT")
 STATE_FILE = "/tmp/.plan_e_state"  # round-robin progress across cycles
 
 
 def meaningful(resp):
     return resp and any(m in resp for m in MAGICS)
-
-# (token, expected response, gated?)
-TOKENS = [
-    ("FASTBOOT", "TOOBTSAF", False),
-    ("AT+NBOOT", "AT+OK", False),
-    ("METAMETA", "?", True),      # expect forbidden / nothing — control probes
-    ("FACTFACT", "?", True),
-]
 
 # Send variants for the sync byte: the dispatcher reads sync + token with
 # separate reads (strlen/strncmp on a second buffer) — framing is NOT proven.
@@ -250,6 +249,28 @@ def build_pairs(tokens, modes):
     return pairs
 
 
+def watch_reenumerate(seconds=15):
+    """After a token hit, watch what the device re-enumerates as."""
+    import usb.core as _u
+    log("[*] watching re-enumeration for 15 s...")
+    seen = set()
+    t0 = time.time()
+    while time.time() - t0 < seconds:
+        for d in _u.find(find_all=True):
+            key = (d.idVendor, d.idProduct, d.bus, d.address)
+            if key not in seen:
+                seen.add(key)
+                vid, pid = d.idVendor, d.idProduct
+                mode = ("FASTBOOT?" if vid == 0x18D1 else
+                        "OPLUS preloader/VCOM" if (vid, pid) == (0x22D9, 0x0006) else
+                        "OPLUS normal" if (vid, pid) == (0x22D9, 0x2046) else
+                        "other")
+                log(f"[USB] {vid:04x}:{pid:04x} bus={d.bus} addr={d.address} -> {mode}")
+        time.sleep(0.2)
+    if not seen:
+        log("[USB] device never came back in 15 s")
+
+
 def one_cycle(only_token=None, order_mode=None):
     if os.environ.get("PLANE_WAIT", "1") == "1" and not wait_fresh():
         return False
@@ -280,9 +301,15 @@ def one_cycle(only_token=None, order_mode=None):
     tok, mode = pairs[idx]
     log(f"[i] round-robin step {idx + 1}/{len(pairs)}: {tok}/{mode} "
         f"(state file {STATE_FILE}; delete to restart)")
+    GONE["flag"] = False
     r = probe(tok, mode, eps, dev.address)
     hit = meaningful(r)
-    save_state(idx + 1 if not hit else 0)
+    if hit:
+        save_state(0)
+        # token accepted — watch where the device goes next
+        watch_reenumerate()
+    else:
+        save_state(idx + 1)
     log("=== CYCLE SUMMARY ===")
     log(f"  {tok}/{mode}: "
         + (f"RESP {printable(r)}" if r else "no response")
