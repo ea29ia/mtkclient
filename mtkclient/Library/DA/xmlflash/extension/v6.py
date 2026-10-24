@@ -459,7 +459,17 @@ class XmlFlashExt(metaclass=LogBase):
 
             read_write_ptr = self.archtools.find_function_from_string("R/W on this address is forbidden.")
             if read_write_ptr:
-                idx = da2patched.find(b"\xE8\x7E\x40\x92",read_write_ptr)
+                # Fork addition (proven by re-da2-readregister.md): the two
+                # READ/WRITE-REGISTER auth gates are literal stubs at fixed
+                # offsets 0x40010fb0/0x40010fb8 (mov r0,#0; bx lr). Success
+                # requires !=0, so patch them to mov r0,#1. The generic
+                # ldr r0,[r9] search below does not match this build.
+                for stub_off in (0x10fb0, 0x10fb8):
+                    if da2patched[stub_off:stub_off + 4] == b"\x00\x00\xA0\xE3":
+                        da2patched[stub_off:stub_off + 4] = b"\x01\x00\xA0\xE3"
+                        self.info(f"Patched R/W-REGISTER auth stub @ {stub_off:#x}")
+                        patched = True
+                idx = da2patched.find(b"\xE8\x7E\x40\x92", read_write_ptr)
                 if idx != -1:
                     allow_read_register_ptr = self.archtools.get_previous_bl_from_off(idx)
                     if allow_read_register_ptr:
