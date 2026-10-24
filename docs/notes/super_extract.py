@@ -325,6 +325,7 @@ def main():
     parser.add_argument('--list', action='store_true')
     parser.add_argument('--scan', action='store_true')
     parser.add_argument('--dump-hdr', action='store_true')
+    parser.add_argument('--dump', default='', help='dump the whole logical partition to this file')
     sub = parser.add_subparsers(dest='cmd', required=False)
     sub.add_parser('custom')
     args = parser.parse_args(sys.argv[1:] + ['custom'])
@@ -372,6 +373,39 @@ def main():
         return 1
     print(f"[*] {args.part}: {len(segs)} extent(s), first @ {segs[0][0]:#x} "
           f"({sum(s[1] for s in segs) / 1e9:.2f} GB)")
+    for i, (ph, sz) in enumerate(segs[:5]):
+        print(f"    extent[{i}]: phys={ph:#x} size={sz:#x}")
+    if args.dump:
+        total = sum(sz for _, sz in segs)
+        print(f"[*] dumping {args.part} -> {args.dump} ({total / 1e9:.2f} GB)")
+        with open(args.dump, 'wb') as f:
+            done = 0
+            for i, (ph, sz) in enumerate(segs):
+                pos = 0
+                while pos < sz:
+                    take = min(0x100000, sz - pos)
+                    f.write(rd.read(ph + pos, take))
+                    pos += take
+                    done += take
+                print(f"    extent {i + 1}/{len(segs)} done ({done / 1e9:.2f} GB)")
+        print(f"[+] saved {args.dump}")
+        return 0
+
+    head = rd.read(segs[0][0], 0x100)
+    sb = rd.read(segs[0][0] + 0x400, 0x100)
+    print(f"[*] lsb@0x0  : {head[:32].hex()}")
+    print(f"[*] lsb@0x400: {sb[:32].hex()}")
+    m16 = struct.unpack_from("<H", sb, 0x38)[0] if len(sb) >= 0x3A else 0
+    m32 = struct.unpack_from("<I", sb, 0)[0] if len(sb) >= 4 else 0
+    print(f"[*] magic @+0x438 = {m16:#x} ({'EXT4' if m16 == EXT4_MAGIC else 'not ext4'}), "
+          f"@+0x400 = {m32:#010x} ({'EROFS' if m32 == 0xE0F5E1E2 else 'not erofs'})")
+    if m16 != EXT4_MAGIC:
+        print("[!] first extent does not start with ext4; dump a few extents to locate it")
+        for i, (ph, sz) in enumerate(segs[:6]):
+            b = rd.read(ph, 0x40)
+            b4 = rd.read(ph + 0x400, 0x20)
+            print(f"    ext[{i}] @{ph:#x}: {b[:16].hex()} | +0x400: {b4[:16].hex()}")
+        return 1
     fs = Ext4(rd, segs)
 
     if args.list:

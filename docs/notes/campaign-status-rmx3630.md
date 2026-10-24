@@ -1,11 +1,8 @@
 # Campaign log — RMX3630 (MT6789) unlock / ADB campaign
 
 > Snapshot of the working log kept at `/home/musin/problem_status.md` (Russian, append-only).
-> Committed to the fork so the whole trail lives with the code.
-> §11 is superseded by §12–§17. Current summary:
-> `docs/notes/STATUS-rmx3630-2026-10-24.md`; detailed reports under
-> `docs/notes/reverse/` (`re-unlock-campaign-2026-10-24.md`,
-> `re-consistency-audit-2.md`).
+> Current summary: `docs/notes/STATUS-rmx3630-2026-10-24.md`.
+> Handoff for the next agent: `docs/notes/HANDOFF-termux-2026-10-25.md`.
 
 # RMX3630 (MT6789/Helio G99) — разблокировка загрузчика. Статус проблемы.
 
@@ -440,3 +437,183 @@ Android не появился как `22d9:2046`; в dmesg только `22d9:00
 (3) t-base счётчик RPMB. Проверка — `watch_usb.sh` + Power; состояние —
 `./run_unlock_state_check.sh`; откат — `MIRROR_RESTORE=1` + сток seccfg
 `…214627.bin`.
+
+## 18. Лог `ye`: restore-баг и preloader-цикл (2026-10-24 22:20)
+
+- `MIRROR_RESTORE=1` сработал **вхолостую**: скрипт сохранил текущий
+  (разлоченный) блок в `rpmb_mirror_before.bin`, затерев эталон, и «восстановил»
+  его же. Исправлено: restore не пишет в before; источник проверяется
+  (locked=1+hash) по списку; есть пересборка locked-блока из payload.
+  Эталон: `/home/musin/rpmb_mirror_locked.bin` (`2374972d…`).
+  На устройстве зеркало по-прежнему `locked=0`.
+- dmesg: `0006` циклами 16 с и 39 с, `2046` нет ни разу. `hardreboot` —
+  не существует (опечатка), Power, похоже, не нажимали.
+- Добавлен read-only `boot_forensics.py` (`./run_boot_forensics.sh`):
+  `oplusreserve1[0..0x40]` (LK читает 0x34 байта в 0x500053E0 и может уйти
+  в RECOVERY), `misc` BCB/BCAB, `expdb`, `boot_para`, `seccfg`.
+
+## 19. Форензика загрузки (2026-10-24 22:35)
+
+- `oplusreserve1[0..0x34]` — дескриптор UFS (`YMTC`, `YMUS8B2TE2A2C1`, `7.3`,
+  плюс 2 контрольных dword), НЕ boot-fail флаг. `0x500053E0` возвращает 0 на
+  успехе (`mov w0,wzr` @0x50005564), отрицательные коды только при ошибке I/O;
+  в `boot_mode_check` это `mode=2 (RECOVERY)` только при ошибке. Наш раздел
+  читается ⇒ recovery ни при чём.
+- `misc`: BCB пуст, BCAB валиден, 6 байт отличаются от бэкапа (LK писал блок);
+  `expdb` = 0; `boot_para` = 0.
+- Гипотеза «Orange State ждёт кнопку» — **опровергнута кодом** (фиксированный
+  mdelay 5 с, опроса кнопок нет). Ведущая — H2 (сдвиг счётчика RPMB → t-base
+  fatal → FBE). H3 (неестественная комбинация `lock=3` + `sboot=0`) — проверить
+  вариантом с `sboot=1`.
+- Инструмент: `rollback_stock_with_canary.py` (`./run_rollback_stock.sh`,
+  запись только с `ROLLBACK_GO=1`): канарейка BCAB в `misc`, зеркало → locked=1,
+  seccfg → сток, ребут. Канарейка отвечает на вопрос «запускался ли LK».
+
+## 20. Канарейка: LK РАБОТАЕТ + дефект методики (2026-10-24 22:50)
+
+- Откат выполнен и проверен: `misc` канарейка `XXXX` → после ребута снова
+  `BCAB` (LK сам починил блок) ⇒ **LK запускается**; seccfg == сток
+  (`12a94a3f…`), зеркало == эталон (`2374972d…`, locked=1).
+- **Дефект методики:** при подключённом USB preloader ждёт DA и НЕ продолжает
+  загрузку. Поэтому все «нет Android, висит 0006» — артефакт теста, а не факт.
+  Правильно: после ребута СРАЗУ выдернуть кабель, подождать 60-90 с, вставить
+  и смотреть `lsusb` (`2046` = Android).
+- План: (1) проверить сток по правильной схеме; (2) если грузится — вернуть
+  unlock и проверить так же; (3) если сток не грузится — искать суперблок
+  t-base (`K400RPMB`) по всему RPMB (H2).
+
+## 21. База подтверждена, H2 опровергнута (2026-10-24 23:05)
+
+- После откатa + правильного включения (кабель выдернут) Android стартует:
+  `22d9:2046`, Product RMX3630, serial SG7DCQW8X8ONCI9T; USB = только MIDI,
+  `adb devices` пуст.
+- **H2 опровергнута**: к этому моменту сделано 3 аутентифицированные записи в
+  RPMB (счётчик сдвинут), и Android всё равно грузится ⇒ запись в RPMB не
+  ломает TEE/FBE.
+- Все прежние «нет загрузки» — артефакт подключённого кабеля (preloader ждёт DA).
+- Добавлен `UNLOCK_NO_REBOOT=1` в `rpmb_unlock_mirror.py` (не перезагружать,
+  чтобы успеть выдернуть кабель). Следующий шаг — вернуть unlock и проверить
+  загрузку по правильной схеме, затем патчить `boot_a` под ADB.
+
+## 22. Настоящий unlock в LK стирает данные (2026-10-24 23:25)
+
+Дизасм `0x500076A8` (fastboot unlock): `0x5003266C` (set_lock_state→3) →
+**`0x50007C9C` (wipe userdata/metadata)** → `0x50054744(1,1)` (mirror sboot=1,
+locked=0). Мы вайп не делали и писали sboot=0. Если ключи FBE привязаны к
+состоянию блокировки — именно это и даёт цикл при разлоченной загрузке
+(пара вибраций = старт → сброс).
+
+Проверка: (1) `reserve1_probe.py` — NoBoot-счётчик (растёт ли bootcount);
+(2) с согласия пользователя — стереть userdata+metadata и повторить загрузку.
+
+## 23. План: вайп userdata+metadata (2026-10-24 23:40)
+
+Симптом при разлоченной загрузке: «старт → сброс» (двойная вибрация), цикла нет.
+Данные не нужны ⇒ повторяем штатный unlock: `0x50007C9C` стирает
+userdata/metadata. Инструмент `wipe_and_unlock.py`
+(`WIPE_GO=1 ./run_wipe_and_unlock.sh`, с `OPLUS_PATCH_ERASE_DENY=1`):
+ERASE-FLASH metadata (32 МБ) + userdata (полный unmap, fallback — обнуление
+первых 16 МБ), затем при необходимости дозапись unlock-состояния, без ребута.
+Затем вручную: кабель выдернуть → Power 10 с → Power 3 с → 90–120 с → вставить
+кабель → `lsusb` (ожидаем 2046; первый старт после вайпа 2–3 мин).
+
+## 24. ПРОРЫВ: Android + ADB (2026-10-25 00:05)
+
+После вайпа metadata(1 МБ)+userdata(16 МБ) и включения без кабеля:
+`22d9:2769`, интерфейс `255/66/1 = ADB Interface`, `adb devices` →
+`SG7DCQW8X8ONCI9T unauthorized`. Гипотеза FBE-привязки к lock_state
+подтвердилась (без вайпа не грузилось, с вайпом — грузится).
+
+Дальше: патч boot-рамдиска (`boot_ramdisk_patch.py`): header v3/v4, рамдиск
+LZ4-legacy → свой кодек + cpio; правим `system/etc/ramdisk/build.prop`
+(`ro.adb.secure=0`, `ro.debuggable=1`, `persist.sys.usb.config=adb`) и кладём
+`/adb_keys`. Итог `/home/musin/boot_patched.img` (0x167c000 B).
+Прошивка: `FLASH_GO=1 ./run_flash_boot_patched.sh` (полный бэкап boot_a + readback).
+Откат: `BOOT_RESTORE=<backup> FLASH_GO=1 …`.
+
+## 25. Патч пересобран из реального boot_a (2026-10-25 00:20)
+
+`docs/notes/rmx3630-lk/boot.img` — ДРУГАЯ (старая) сборка: kernel_size
+0x1376ecd vs реальный **0x137dd75**, ramdisk offset 0x1378000 vs **0x137f000**,
+fingerprint …1725286517508 vs …1740487296106. Свежий бэкап boot_a
+(md5 356320597c88669f032e9736e5f906ce) ≠ старый файл (10f3576a…).
+Патч пересобран из `/home/musin/boot_a_backup_20261024_225224.img`:
+образ 0x1683000 B, props adb-патча на месте, `/adb_keys` 714 B.
+Правило: образ для прошивки собирать только из свежего бэкапа и сверять
+`kernel_size`.
+
+## 26. Причина bootloop: затёртая встроенная vbmeta (2026-10-25 00:35)
+
+`boot_a` v4 содержит встроенную vbmeta (`AVB0` @0x1513000) и AVB-футер в конце.
+Первый патч (LZ4 0x3035af, образ 0x1683000) накрыл vbmeta → libavb читал мусор
+→ жёсткий сбой → цикл.
+
+Исправлено `build_boot_gzip.py`: рамдиск gzip -9 (0x15acb6) влезает в штатный
+слот 0x194000, байты от 0x1513000 до конца скопированы из стока побайтно
+(vbmeta+footer целы), меняется только рамдиск. Патч: ro.adb.secure=0,
+ro.debuggable=1, persist.sys.usb.config=adb, /adb_keys.
+Ответы: ключ в userdata записать нельзя (FBE), vbmeta патчить нельзя (подпись).
+
+## 27. gzip-boot загрузился, но adb unauthorized (2026-10-25 00:50)
+
+Прошитый образ (gzip-рамдиск, vbmeta на месте) — **грузится**, цикла нет:
+значит hash mismatch в orange-state допускается, и структура верна.
+Но правка `system/etc/ramdisk/build.prop` не применилась (файл не читается
+init'ом). Свойства перенесены в **`/prop.default`** (читается first-stage init
+раньше системного build.prop; `ro.*` write-once): ro.adb.secure=0,
+ro.debuggable=1, ro.secure=0, persist.sys.usb.config=adb.
+Образ: cpio 0x300690 → gzip 0x15ad19, слот ок, vbmeta/футер стоковые.
+
+## 28. GKI-механизм force_debuggable (2026-10-25 01:00)
+
+По разбору AOSP (`/home/musin/aia`): `system/etc/ramdisk/build.prop` в GKI
+читается только на `ro.bootimage.build.date*`/`fingerprint`; `/prop.default` и
+`/default.prop` с Android 10 не читаются вовсе. Штатный путь — маркер
+**`/force_debuggable`** + **`/adb_debug.prop`**: first-stage init копирует их в
+`/second_stage_resources/`, вторая стадия грузит `adb_debug.prop` с наивысшим
+приоритетом, но только при `verifiedbootstate == orange` (у нас lock=3).
+Образ пересобран: +force_debuggable, +adb_debug.prop (ro.adb.secure=0,
+ro.debuggable=1, ro.force.debuggable=1, persist.sys.usb.config=adb),
++prop.default (legacy), +adb_keys. gzip 0x15ad50, vbmeta/футер стоковые.
+
+## 29. Реверс init/LK: force_debuggable подтверждён (2026-10-25 01:20)
+
+- `init` в рамдиске — только first stage: при наличии `/force_debuggable` (корень
+  рамдиска) копирует `/adb_debug.prop` → `/debug_ramdisk/adb_debug.prop` и
+  `/userdebug_plat_sepolicy.cil` → `/debug_ramdisk/…`; отсутствие .cil только
+  лишает userdebug-sepolicy (свойства всё равно грузятся). `verifiedbootstate`
+  в этой ветке НЕ проверяется.
+- Загрузка свойств — во второй стадии (`/system/bin/init`): `/debug_ramdisk/adb_debug.prop`
+  грузится ПОСЛЕДНИМ и перетирает `ro.*` из `/system/build.prop`; `/prop.default`
+  читается только в recovery (поэтому v3 не сработал).
+- LK при lock=3 гарантированно ставит `verifiedbootstate=orange`,
+  `device_state=unlocked`, а `avb_slot_verify` вызывается с
+  ALLOW_VERIFICATION_ERRORS (bit0) → hash mismatch встроенной vbmeta не фатален.
+- Следующий шаг: прошить v4 (md5 76e089fa4aadc1bc17f931a50ccf33d4) и проверить
+  `adb devices`. v4, судя по логам, ещё не прошивался (последний flash — v2).
+
+## 30. v4 не сработала: нужен userdebug_plat_sepolicy.cil (2026-10-25 01:40)
+
+В `FirstStageMain`: setenv("INIT_FORCE_DEBUGGABLE") вызывается только если
+удались ОБЕ копии (adb_debug.prop И userdebug_plat_sepolicy.cil). На user-сборке
+второго файла нет → env не ставится → вторая стадия не грузит adb_debug.prop.
+Исправление v5: патч 4 байт в init — 0x2F6D14 `tbz w19,#0,0x2F6DA4` →
+`b 0x2F6DA4` (setenv всегда; use_userdebug_policy остаётся false, файла нет).
+Образ v5 md5 f0c1674243f465d9bb363a45642d2117, ramdisk 0x15ad50, vbmeta цела.
+
+## 31. system (EROFS) извлечён, init разобран (2026-10-25 00:10)
+
+- `system_a` = **EROFS** (магия `0xE0F5E1E2` по +0x400), 22 extent'а, 0.89 ГБ;
+  дамп `/home/musin/system_a.erofs` (md5 `f66645e4…`), распакован в `/tmp/sysroot`.
+- LP-разметка: контейнер с `0x1000`, заголовок `0x3000`, дескрипторы на `0x50`,
+  таблицы от `header_size`; разделы `system_a`, `vendor_a`, …
+- `/system/bin/init` (3 085 160 B): строки `/force_debuggable` (0x17A49),
+  `/prop.default` (0x2850B, только recovery), `/debug_ramdisk/adb_debug.prop`
+  (0x337B7/0x338EE, xref 0x156FE4). Вторая стадия грузит adb_debug.prop при
+  `access(R_OK)==0`, но между ними вызов `0x2D81A0` и ветка «нет прав» (0x158C80).
+- `ro.adb.secure=1` — в `/system/build.prop` (стр. 121); adbd — в
+  `/system/apex/com.google.android.adbd.apex`.
+- На устройстве props не применились → гипотеза №1: первую стадию исполняет
+  `init` из `vendor_boot_a` (перекрывает наш из boot-рамдиска). Следующий шаг —
+  дамп `vendor_boot_a` и проверка, есть ли там `init`.
+- Handoff: `docs/notes/HANDOFF-termux-2026-10-25.md`.
