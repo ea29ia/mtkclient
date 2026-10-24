@@ -494,12 +494,16 @@ class DAXML(metaclass=LogBase):
         # result fetch, mirroring get_hw_info.
         tmp = self.cmd.cmd_read_reg(base_address=addr)
         if not self.send_command(tmp, noack=True):
+            self.error("READ-REGISTER: send_command failed")
             return None
         cmd, result = self.get_command_result()
+        self.debug(f"READ-REGISTER result: cmd={cmd!r} result={type(result).__name__ if not isinstance(result,str) else result!r}")
         if not isinstance(result, UpFile):
+            self.error(f"READ-REGISTER: unexpected result {result!r}")
             return None
         data = self.download(result)
         scmd, sresult = self.get_command_result()
+        self.debug(f"READ-REGISTER tail: {scmd!r} {sresult!r}")
         if sresult == "START":
             return data
         return None

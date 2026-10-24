@@ -33,7 +33,10 @@ def read_nibble(loader):
     data = loader.xmlft.xflash.read_register(RGU)
     if data is None:
         return None
-    if isinstance(data, str):
+    if isinstance(data, (bytes, bytearray)):
+        print(f"[dbg] read_register returned {len(data)} B: {bytes(data).hex()}")
+    elif isinstance(data, str):
+        print(f"[dbg] read_register returned str: {data[:80]!r}")
         data = bytes.fromhex(data)
     val = int.from_bytes(data[:4], "little")
     return val
