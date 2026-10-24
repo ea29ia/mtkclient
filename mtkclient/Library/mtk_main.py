@@ -710,6 +710,20 @@ class Main(metaclass=LogBase):
                 self.info("Successfully set meta mode :)")
             mtk.port.close()
             self.close()
+        elif cmd == "custom":
+            # Fork extension: connect + configure DA, then hand the Mtk
+            # object back to the caller (custom tooling scripts in
+            # docs/notes/ drive the DA API directly).
+            da_handler = DaHandler(mtk, loglevel)
+            mtk.offset = 0
+            mtk.length = 0x400000
+            mtk.step = 0x1000
+            mtk = da_handler.connect(mtk, directory)
+            if mtk is None:
+                self.close()
+                return None
+            mtk = da_handler.configure_da(mtk)
+            return mtk
         else:
             # DA / FLash commands start here
             da_handler = DaHandler(mtk, loglevel)
