@@ -31,8 +31,9 @@ Status legend: **[proven]** = disassembly / device bytes / log evidence,
    original — a reverted image is **not** evidence of a failed write. [proven
    code, inferred path]
 5. **But one fact does not fit DC-only:** the `seccfg` partition also carries an
-   unrelated 16-byte marker at offset `0x200` (`90 79 09 22 00 00 00 01`), which
-   our 8 MB payload zeroed. It is present again after the reboot. DC rewrites only
+   unrelated 8-byte vendor marker at offset `0x200` (`90 79 09 22 00 00 00 01`),
+   which our 8 MB payload would have zeroed. It is present again after the
+   reboot. DC rewrites only
    `0x3C` bytes, so either **the 8 MB write did not cover the tail**, or **another
    actor restored the full partition**. This is now the top open question (§5 Q1).
 6. **DA-side RPMB is not trustworthy on this UFS unit.** Reads succeed with a
@@ -78,7 +79,7 @@ Status legend: **[proven]** = disassembly / device bytes / log evidence,
         MMMM | ver=4 | size=0x3C | lock_state | dm_verity | sboot | EEEE
 +0x01C  digest = HACC_AES(SHA-256(record[0x00:0x1C]))      (0x20 B)
 +0x03C  backup record slot — EMPTY in this unit (all zero)
-+0x200  16-byte vendor marker: 90 79 09 22 00 00 00 01  (rest zero)
++0x200  8-byte vendor marker: 90 79 09 22 00 00 00 01  (rest zero)
 +0x210..0x7FFFFF  all zero
 ```
 * Only **one** `MMMM` in the whole 8 MB; LK's validator reads only the first
