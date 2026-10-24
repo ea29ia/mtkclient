@@ -985,9 +985,29 @@ class DAXML(metaclass=LogBase):
             if _os.environ.get("OPLUS_PATCH_ERASE_KILL", "0") == "1":
                 patches.append(("WRITE-FLASH erase-call 0x4000325c -> MOV R0,#0",
                                 0x4000325c, b"\x00\x00\xa0\xe3"))
+                # WRITE-PARTITION erase-gate: 0x40002214 beq -> erase path
+                # (0x400022a8) when name != PRELOADER. NOP the BEQ (proven
+                # bytes 2300000a; re-writeflash-scrubber.md §5 hardening).
+                patches.append(("WRITE-PARTITION erase-gate 0x40002214 -> NOP",
+                                0x40002214, b"\x00\x00\xa0\xe1"))
             else:
                 self.info("WRITE-FLASH erase-kill patch skipped "
                           "(set OPLUS_PATCH_ERASE_KILL=1; target 0x4000325c)")
+            # Post-write HACC hang NOPs (re-postwrite-hang.md §2, proven):
+            # busy-wait loops on HACC READY bit at 0x1000A008 that hang the
+            # write engine after big writes (the 8 MB seccfg upload EIO).
+            # 0x40039848 beq / 0x400397e0 bgt / 0x40034b18 beq -> nop.
+            if _os.environ.get("OPLUS_PATCH_HACC_HANG", "0") == "1":
+                patches.append(("HACC-poll NOP 0x40039848", 0x40039848, b"\x00\x00\xa0\xe1"))
+                patches.append(("HACC-poll NOP 0x400397e0", 0x400397e0, b"\x00\x00\xa0\xe1"))
+                patches.append(("HACC-poll NOP 0x40034b18", 0x40034b18, b"\x00\x00\xa0\xe1"))
+                # ACC in-place transform skip: 0x4000c210 beq 0x4000c258 -> b
+                # (skips fcn.40034810/40034840/4003482c entirely on writes)
+                patches.append(("ACC-pass skip 0x4000c210 beq -> b",
+                                0x4000c210, b"\x0e\x00\x00\xea"))
+            else:
+                self.info("HACC-hang NOPs skipped "
+                          "(set OPLUS_PATCH_HACC_HANG=1; targets 0x40039848/0x400397e0/0x40034b18/0x4000c210)")
             # The deny that actually fires for WRITE-FLASH(seccfg) is INSIDE the
             # WRITE-FLASH handler (0x40002e60) at 0x400031d4: after the policy
             # parse (BL 0x4002cf68) it checks TWO flag bytes -
