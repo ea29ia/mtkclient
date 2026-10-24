@@ -1314,20 +1314,10 @@ class XmlFlashExt(metaclass=LogBase):
                 if not self.xflash.upload(fileopresult, writedata, raw=True):
                     self.error("Error on writing seccfg config to flash (upload).")
                     return False, "Error on writing seccfg config to flash."
-                # Same-session readback: discriminates "write never committed"
-                # (zeros immediately) vs "zeroed at the next boot by TEE/preloader
-                # validation" (valid now, zeros after replug).
-                import time as _t
-                _t.sleep(1.0)
-                check = self.xflash.readflash(
-                    addr=partition.sector * 0x1000,
-                    length=0x1000, filename="", parttype="user", display=False)
-                if check and check[:4] == b"\x4D\x4D\x4D\x4D":
-                    magic, ver, size, lock, dmv, sboot, endf = unpack("<IIIIIII", check[:28])
-                    self.info(f"Same-session readback: lock_state={lock}, "
-                              f"dm_verity={hex(dmv)}, sboot={hex(sboot)} - WRITE COMMITTED")
-                else:
-                    self.error("Same-session readback: EMPTY/ZERO - write did NOT commit!")
+                # NOTE: no same-session readback here — firing a readflash in
+                # the middle of the write command's protocol handshake deadlocks
+                # the DA (proven 3x: upload 100% then EIO). Verify in a FRESH
+                # session instead.
                 return True, "Successfully wrote seccfg."
             if type(fileopresult) is not FileSysOp:
                 break  # e.g. CMD:END error
