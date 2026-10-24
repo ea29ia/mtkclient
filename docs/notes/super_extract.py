@@ -242,20 +242,21 @@ def main():
         head = rd.read(0, 0x1000)
         print("[*] first 0x100 bytes:", head[:0x100].hex())
         print("[*] ascii:", ''.join(chr(c) if 32 <= c < 127 else '.' for c in head[:128]))
-        for name, magic in (("LP_GEOM", 0x616C4467), ("LP_HDR", 0x414C5030),
-                            ("EXT4", 0xEF53)):
-            hits = []
-            step = 0x1000 if name != "LP_HDR" else 0x1000
-            for off in range(0, 0x4000000, step):
-                blk = rd.read(off if name != "EXT4" else off + 1024, 8)
-                if len(blk) < 8:
-                    break
-                v = struct.unpack_from("<I", blk, 0)[0]
-                if v == magic or (name == "EXT4" and struct.unpack_from("<H", blk, 0x38 if len(blk) > 0x38 else 0)[0] == magic):
-                    hits.append(off)
-                if len(hits) >= 5:
-                    break
-            print(f"[*] scan {name}: {[hex(h) for h in hits]}")
+        hits = {"LP_GEOM": [], "LP_HDR": [], "EXT4": []}
+        off = 0
+        while off < 0x4000000 and (len(hits["LP_GEOM"]) < 3 or len(hits["LP_HDR"]) < 3):
+            blk = rd.read(off, 0x1000)
+            if len(blk) < 0x1000:
+                break
+            if struct.unpack_from("<I", blk, 0)[0] == LP_GEOM_MAGIC:
+                hits["LP_GEOM"].append(off)
+            if struct.unpack_from("<I", blk, 0)[0] == LP_HDR_MAGIC:
+                hits["LP_HDR"].append(off)
+            if struct.unpack_from("<H", blk, 0x400 + 0x38)[0] == EXT4_MAGIC:
+                hits["EXT4"].append(off)
+            off += 0x1000
+        for k, v in hits.items():
+            print(f"[*] scan {k}: {[hex(x) for x in v[:5]]}")
         return 0
     parts, exts = parse_lp(rd)
     segs = part_map(parts, exts, args.part)
