@@ -1073,6 +1073,17 @@ class DAXML(metaclass=LogBase):
             else:
                 self.info("write-consumer gate patches skipped "
                           "(set OPLUS_PATCH_CONSUMER=1; targets 0x4002F850/0x4002E4B0)")
+            # F5 marker (re-writepartition-consumer-wakeup.md §5): overwrite the
+            # sparse-flag byte store with `str r1,[r6]` writing the CHUNK LENGTH
+            # into 0x4006E7C8. After a write, 0x4006E7C8 != 0 proves the
+            # consumer's 0x4002f804 actually ran with len>0.
+            if _os.environ.get("OPLUS_PATCH_F5_MARK", "0") == "1":
+                patches.append(("F5 marker 0x4002F858 mov r0,r4 -> str r1,[r6]",
+                                0x4002F858, b"\x00\x10\x86\xe5"))
+                patches.append(("F5 marker 0x4002F85C mov r1,sl -> mov r0,r4",
+                                0x4002F85C, b"\x04\x00\xa0\xe1"))
+            else:
+                self.info("F5 marker skipped (set OPLUS_PATCH_F5_MARK=1)")
             # The deny that actually fires for WRITE-FLASH(seccfg) is INSIDE the
             # WRITE-FLASH handler (0x40002e60) at 0x400031d4: after the policy
             # parse (BL 0x4002cf68) it checks TWO flag bytes -
