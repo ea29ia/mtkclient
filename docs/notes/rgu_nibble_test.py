@@ -30,7 +30,7 @@ RGU = 0x10007024
 
 
 def read_nibble(loader):
-    data = loader.xmlft.read_register(RGU)
+    data = loader.xmlft.xflash.read_register(RGU)
     if data is None:
         return None
     if isinstance(data, str):
