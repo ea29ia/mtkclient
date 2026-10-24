@@ -293,6 +293,12 @@ class DAXML(metaclass=LogBase):
             loglevel = LogLevel().ERROR
         system_os = FtSystemOSE.OS_LINUX
         logchannel = self.daconfig.logchannel
+        # OPLUS DA2 DEBUG-over-USB: route DA logs to the USB CDC channel so
+        # the consumer's failure strings ("write bulk image() Failed...",
+        # "image hash binding check fail", policy dump) reach the host log.
+        import os as _os
+        if _os.environ.get("OPLUS_DA_LOG_USB", "0") == "1":
+            logchannel = "USB"
         res = self.send_command(self.cmd.cmd_set_runtime_parameter(da_log_level=loglevel, system_os=system_os,
                                                                    log_channel=logchannel,
                                                                    version="1.1", battery_exist="AUTO-DETECT",
