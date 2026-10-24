@@ -72,7 +72,7 @@ def _scan_magic(rd, start, end, magic, step=0x1000):
     return None
 
 
-def parse_lp(rd: Reader):
+def parse_lp(rd: Reader, dump_hdr: bool = False):
     """This device's LP container starts at 0x1000 inside `super`
     (geometry @0x1000, metadata header @0x3000), so locate the magics instead
     of assuming offset 0."""
@@ -109,7 +109,7 @@ def parse_lp(rd: Reader):
             hits.append(off)
         off += 0x1000
     print(f"[*] LP header candidates: {[hex(x) for x in hits]}")
-    if args.dump_hdr and hits:
+    if dump_hdr and hits:
         h = hits[0]
         hdr = rd.read(h, 0x100)
         print(f"[*] raw header @{h:#x}:")
@@ -329,7 +329,7 @@ def main():
         for k, v in hits.items():
             print(f"[*] scan {k}: {[hex(x) for x in v[:5]]}")
         return 0
-    parts, exts = parse_lp(rd)
+    parts, exts = parse_lp(rd, dump_hdr=args.dump_hdr)
     segs = part_map(parts, exts, args.part)
     if not segs:
         print(f"[-] partition {args.part} not in LP table: "
