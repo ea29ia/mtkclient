@@ -72,10 +72,12 @@ def main():
     import mtk as mtk_cli
     check = "--check" in sys.argv
     nib = None
-    for i, a in enumerate(sys.argv):
-        if a == "--nibble" and i + 1 < len(sys.argv):
+    if "--nibble" in sys.argv:
+        i = sys.argv.index("--nibble")
+        if i + 1 < len(sys.argv):
             nib = int(sys.argv[i + 1], 0)
-    sys.argv = [a for a in sys.argv if a not in ("--check", "--nibble") and a != str(nib)]
+        # remove both tokens before mtk's parser sees them
+        del sys.argv[i:i + 2]
     parser = mtk_cli.create_base_parser()
     parser = argparse.ArgumentParser(parents=[parser], description=mtk_cli.INFO)
     sub = parser.add_subparsers(dest='cmd', required=False)
