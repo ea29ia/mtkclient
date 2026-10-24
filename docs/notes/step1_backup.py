@@ -22,10 +22,15 @@ os.chdir(MTK_DIR)
 
 
 def main():
-    from mtkclient.Library.mtk_main import Main
     import argparse
-    parser = argparse.ArgumentParser(add_help=False)
-    mtk_main = Main(sys.argv[1:])
+    sys.path.insert(0, os.getcwd())  # repo root (script lives in docs/notes)
+    import mtk as mtk_cli
+    parser = mtk_cli.create_base_parser()
+    parser = argparse.ArgumentParser(parents=[parser],
+                                     description=mtk_cli.INFO)
+    args = parser.parse_args(sys.argv[1:])
+    from mtkclient.Library.mtk_main import Main
+    mtk_main = Main(args)
     mtk = mtk_main.run(parser)
     if mtk is None:
         print("[-] connect failed")

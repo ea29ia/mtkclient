@@ -48,13 +48,20 @@ MARKER = int(os.environ.get("PATHA_MARKER", "0x00000001"), 16)
 
 
 def main():
-    # standard mtkclient bootstrap: Main(sys.argv) handles arg parsing, VCOM
-    # catch, DA upload, heapbait and the OPLUS runtime patches (same code path
-    # as `mtk.py r ...`); mtk.run(parser) returns the connected Mtk object.
-    from mtkclient.Library.mtk_main import Main
+    # standard mtkclient bootstrap: parse args with mtk.py's parser, then
+    # Main(args) handles VCOM catch, DA upload, heapbait and the OPLUS
+    # runtime patches (same code path as `mtk.py r ...`); mtk.run(parser)
+    # returns the connected Mtk object.
     import argparse
-    parser = argparse.ArgumentParser(add_help=False)
-    mtk_main = Main(sys.argv[1:])
+    sys.path.insert(0, os.getcwd())  # repo root (script lives in docs/notes)
+    import mtk as mtk_cli
+    parser = mtk_cli.create_base_parser()
+    # full parser with subcommands so that parse_args accepts --cmd r ...
+    parser = argparse.ArgumentParser(parents=[parser],
+                                     description=mtk_cli.INFO)
+    args = parser.parse_args(sys.argv[1:])
+    from mtkclient.Library.mtk_main import Main
+    mtk_main = Main(args)
     mtk = mtk_main.run(parser)
     if mtk is None:
         print("[-] connect failed (check .state/hwparam.json removal, VCOM catch)")
