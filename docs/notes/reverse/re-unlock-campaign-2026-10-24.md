@@ -285,3 +285,61 @@ Fresh CWD (no `.state`, no `hwparam.json`) before each attempt.
 * **Inferred:** DC-2 as the re-lock mechanism (code + behaviour agree, but
   `expdb` does not carry the LK log to prove it on-device); the full-partition
   restore question is explicitly left open.
+
+---
+
+## 4bis. UPDATE 2026-10-24 21:40 — оба вопроса закрыты (test9 / test9a)
+
+### Q1 (answered): WRITE-PARTITION действительно пишет всю партицию
+
+`WRITE_REACH_GO=1 ./run_write_reach.sh` (log `/home/musin/test9`):
+
+```
+[+] para: LBA 0x88 base 0x88000 size 0x80000
+[*] original: md5=00ff461906b45fc4af74f81839a30069 nonzero=31
+[*] test image: 0x80000 B, markers at 0x0 and 0x7f000
+[*] head marker: OK (524541434848454144…)
+[*] tail marker: OK (52454143485441494c…)
+[+] FULL WRITE CONFIRMED
+[+] para restored (md5 00ff461906b45fc4af74f81839a30069)
+```
+
+⇒ DA программирует весь регион, а не только принятый префикс. Значит
+8-МБ запись seccfg дошла до конца, и вернувшийся маркер `0x200` означает
+**внешний полный restore** (не «неполную запись»). Источник restore надо искать
+в партициях, которые мы ещё не снимали (`otp`, `sec1`, `nvcfg`,
+`oplusreserve1..6`), либо в TEE/preloader.
+
+### Q3 (answered): зеркало RPMB реально читается и лежит в 0x1DC
+
+`./run_rpmb_probe.sh` (log `/home/musin/test9a`), блоки 0x1DC–0x1DF:
+
+```
++0x00 sboot=0  +0x04 dev_info=1  +0x08 last_bootmode=0  +0x0C locked_bit=1
++0x10 aux=0    +0x20 "RMX3630RU"
+sha256(0..0x3E0) == stored[0x3E0..0x400]        -> hash VALID
+```
+
+* Это **настоящие данные RPMB** (модель устройства внутри блока!) — не нули.
+* Чтение под заведомо неверным ключом (0xA5×32) вернуло **те же байты** —
+  ожидаемо: запрос RPMB-read не подписывается MAC, а заглушка не проверяет
+  MAC ответа. Поэтому «успех с неверным ключом» **ничего не доказывает** про
+  ключ (это исправлено и в скрипте).
+* `GET-RPMB-KEY-STATUS` снова `NOT-EXIST`, но на UFS это слабый сигнал.
+* Зеркало = `locked_bit=1` ⇒ именно это и заставляет LK перезалочивать.
+
+### Следующий шаг: `run_rpmb_unlock_mirror.sh`
+
+Скрипт `docs/notes/rpmb_unlock_mirror.py`:
+1. dry-run: читает зеркало, строит «unlocked»-блок (`+0xC=0`, пересчёт
+   SHA-256) и печатает diff;
+2. `MIRROR_WRITE_GO=1`: пишет блоки 0x1DC–0x1DF ключом D, проверяет readback;
+3. если запись не встала (ключ не тот → JEDEC auth failure) — **останавливается
+   и не трогает seccfg**;
+4. если встала — в той же сессии бэкапит seccfg, пишет `lock=3`, проверяет
+   readback и перезагружает;
+5. `MIRROR_RESTORE=1` — вернуть сохранённый блок (`/home/musin/rpmb_mirror_before.bin`).
+
+Риск: удачная запись сдвигает аппаратный счётчик RPMB; t-base SFSRP может
+один раз упасть в «Mismatch between the counters» (trustedStorage/widevine
+недоступны на этот бут). Откат — тем же ключом из сохранённого блока.

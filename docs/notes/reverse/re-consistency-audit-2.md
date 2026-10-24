@@ -247,3 +247,20 @@ applies to the running DA. `DA_BR.bin[0x68AB8:]` md5 `9bda6b74…`,
 | `re-da2-bootmode-reboot.md` | banner: nibble-loss verdict conflicts with `re-rgu-nibble-loss` |
 | `re-reserve2-master.md`, `re-md1img-scan.md`, `re-ghostlock-applicability.md` | banner: plans invalidated (no RPMB write path / no persistence) |
 | `problem_status.md` | §11 marked SUPERSEDED, §1–§9 historical note, §12 extended |
+
+---
+
+## 7. Post-audit device verification (2026-10-24 21:40)
+
+Two of the corrected claims were verified on the device immediately after the
+audit (logs `/home/musin/test9`, `/home/musin/test9a`):
+
+| claim | verdict |
+|---|---|
+| C1 — mirror at RPMB blocks 0x1DC–0x1DF, `0x1DC` is the frame address | **CONFIRMED**: real data returned (`dev_info=1`, `locked=1`, `"RMX3630RU"` @+0x20, hash VALID). Blocks 0–3 are empty. |
+| C4 — program length = received length | **REFUTED for full-size images**: `para` 0x80000 image wrote head **and tail** markers (`FULL WRITE CONFIRMED`) and restored byte-exactly. Full-partition writes do reach the end ⇒ the seccfg 0x200 marker returning means an **external full restore**. |
+| R2/L13 — RPMB reads are not request-authenticated | **CONFIRMED on device**: identical bytes under a deliberately wrong key; responses are not MAC-checked by the DA stub. |
+| key-status signal is weak on UFS | consistent: `NOT-EXIST` while a valid unlocked/locked mirror exists at 0x1DC. |
+
+Consequence for §C4: "payload-length semantics" still holds in the DA loop, but
+a size-matched write is full; the open question moves to *who restores seccfg*.
