@@ -1106,8 +1106,23 @@ class DAXML(metaclass=LogBase):
             #  (b) entity-compare loop at 0x4002fcf0 (CMP r6,#0; BEQ continue,
             #      fallthrough -> deny print @0x4002fd04) - make the BEQ
             #      unconditional so the deny print is never reached.
-            patches.append(("oplus image hash-list check 0x4002f804 -> MOV R0,#0; BX LR",
-                            0x4002f804, ret_r0))
+            # !! DO NOT STUB 0x4002f804 BY DEFAULT !!
+            # 0x4002f804 is NOT a "hash-list check" - it IS the write
+            # consumer's per-chunk dispatch: push {r4..lr}, policy loads,
+            # hash-binding gate (r8), is_sparse detect, bulk-init 0x4002d5a8,
+            # then the actual write loop 0x4002d66c. Stubbing it makes every
+            # WRITE-PARTITION a silent success (no data written, no error):
+            #   marker 0x4006E7C8=0, bulk handle 0x4006E790 all-zero,
+            #   flash unchanged. Confirmed live (f5-dump / para probe).
+            # The real hash gates are handled by F1 (0x4002F850) + the
+            # entity-compare patch below.
+            if _os.environ.get("OPLUS_PATCH_F804_STUB", "0") == "1":
+                patches.append(("WRITE-consumer dispatch 0x4002f804 -> MOV R0,#0; BX LR "
+                                "(DANGER: disables all writes)",
+                                0x4002f804, ret_r0))
+            else:
+                self.info("write-consumer dispatch stub 0x4002f804 skipped "
+                          "(set OPLUS_PATCH_F804_STUB=1 to disable writes entirely)")
             patches.append(("entity-compare deny gate 0x4002fcf4 BEQ -> B",
                             0x4002fcf4, b"\x08\x00\x00\xea"))
             # The SEC seccfg state writer sites 0x40034ffc/0x40035014 store
