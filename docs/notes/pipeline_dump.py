@@ -90,25 +90,25 @@ def main():
     if ctx_ptr:
         ctx = struct.unpack("<I", ctx_ptr)[0]
         print(f"[*] ctx = {ctx:#x}")
-        if 0x40000000 < ctx < 0x40100000:
+        if 0x40000000 < ctx < 0x40300000:
             dump(xmlft, ctx, 0x20, "ctx +0x00..0x1F")
             dump(xmlft, ctx + 0x90, 0x20, "ctx +0x90..0xAF (9C/A0/A4)")
             dump(xmlft, ctx + 0xE0, 8, "ctx +0xE0/+0xE4")
     if c2_ptr:
         c2 = struct.unpack("<I", c2_ptr)[0]
         print(f"[*] ctx2 = {c2:#x}")
-        if 0x40000000 < c2 < 0x40100000:
+        if 0x40000000 < c2 < 0x40300000:
             dump(xmlft, c2, 0x20, "ctx2 +0x00..0x1F")
             dump(xmlft, c2 + 0xE0, 8, "ctx2 +0xE0/+0xE4")
 
     # 0x58-struct via ctx+0x24
     if ctx_ptr:
         ctx = struct.unpack("<I", ctx_ptr)[0]
-        if 0x40000000 < ctx < 0x40100000:
+        if 0x40000000 < ctx < 0x40300000:
             p24 = dump(xmlft, ctx + 0x24, 4, "ctx+0x24 (0x58-struct ptr)")
             if p24:
                 st = struct.unpack("<I", p24)[0]
-                if 0x40000000 < st < 0x40100000:
+                if 0x40000000 < st < 0x40300000:
                     dump(xmlft, st, 0x10, "0x58-struct +0x00..0x0F (policy bytes!)")
                     dump(xmlft, st + 0x48, 0x10, "0x58-struct +0x48/+0x50 (LBA/size)")
 
