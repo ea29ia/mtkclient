@@ -1311,7 +1311,7 @@ class XmlFlashExt(metaclass=LogBase):
                 # CMD:DOWNLOAD-FILE (size already known from the WRITE-PARTITION
                 # XML). Upload the data now.
                 self.info("writeflash(WRITE-PARTITION): DwnFile - uploading data")
-                if not self.xflash.upload(fileopresult, writedata, raw=True):
+                if not self.xflash.upload(fileopresult, writedata, raw=False):
                     self.error("Error on writing seccfg config to flash (upload).")
                     return False, "Error on writing seccfg config to flash."
                 # NOTE: no same-session readback here — firing a readflash in
