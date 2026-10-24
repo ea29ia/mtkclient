@@ -624,8 +624,18 @@ class DAXML(metaclass=LogBase):
             pos = 0
             bytestowrite = length
             if resp == "OK":
+                first_in_loop = True
                 while bytestowrite > 0:
-                    self.ack_value(0)
+                    # F4 (re-writepartition-silent-skip.md): the DA's data-loop
+                    # parses the FIRST in-loop OK@<hex> as the write TARGET
+                    # [slot+0x10]; target==0 makes the consumer skip the whole
+                    # receive and exit with fake success (beq @0x40030250).
+                    # Send the real length as the first in-loop ack.
+                    if first_in_loop:
+                        self.ack_value(length)
+                        first_in_loop = False
+                    else:
+                        self.ack_value(0)
                     resp = self.get_response()
                     if "OK" not in resp:
                         rmsg = get_field(resp, "message")
@@ -1043,6 +1053,20 @@ class DAXML(metaclass=LogBase):
             else:
                 self.info("HACC_READ NOPs skipped "
                           "(set OPLUS_PATCH_HACC_READ=1; targets 0x40034f74/0x40034fc8)")
+            # Write-consumer gates (re-writepartition-silent-skip.md §fixes):
+            # the DMA consumer 0x4002ff78 silently discards data when the
+            # hash-binding/img_auth gate (F1) or the is_sparse/signature check
+            # (F3) trips. F1: 0x4002F850 orr r8,r2,r1 -> mov r8,#0 (kill the
+            # gate flags). F3: 0x4002E4B0 ldr r0,[r0] -> mov r0,#0 (always
+            # bulk path, heals stale 0x4006E7C8).
+            if _os.environ.get("OPLUS_PATCH_CONSUMER", "0") == "1":
+                patches.append(("write-consumer hash-binding gate 0x4002F850 -> MOV R8,#0",
+                                0x4002F850, b"\x00\x80\xa0\xe3"))
+                patches.append(("write-consumer is_sparse 0x4002E4B0 -> MOV R0,#0",
+                                0x4002E4B0, b"\x00\x00\xa0\xe3"))
+            else:
+                self.info("write-consumer gate patches skipped "
+                          "(set OPLUS_PATCH_CONSUMER=1; targets 0x4002F850/0x4002E4B0)")
             # The deny that actually fires for WRITE-FLASH(seccfg) is INSIDE the
             # WRITE-FLASH handler (0x40002e60) at 0x400031d4: after the policy
             # parse (BL 0x4002cf68) it checks TWO flag bytes -
