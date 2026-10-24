@@ -46,7 +46,13 @@ def main():
     orig = loader.readflash(addr=base, length=0x1000, filename="/tmp/para_orig.bin",
                             parttype="user", display=False)
     orig = orig[0] if isinstance(orig, tuple) else orig
-    if not orig:
+    if not orig or isinstance(orig, bool) or len(orig) < 0x1000:
+        # with a filename the readflash path returns True, not data — re-read
+        # into memory (no filename) to get bytes
+        orig = loader.readflash(addr=base, length=0x1000, filename="",
+                                parttype="user", display=False)
+        orig = orig[0] if isinstance(orig, tuple) else orig
+    if not orig or isinstance(orig, bool) or len(orig) < 0x1000:
         print("[-] para read failed"); return 1
     print(f"[*] para original head: {bytes(orig[:32]).hex()}")
 
@@ -71,7 +77,7 @@ def main():
     time.sleep(1.0)
     rb = loader.readflash(addr=base, length=0x1000, filename="", parttype="user", display=False)
     rb = rb[0] if isinstance(rb, tuple) else rb
-    if rb == pattern:
+    if rb and not isinstance(rb, bool) and rb == pattern:
         print("[+] PARA COMMITTED — program engine WORKS; seccfg is silently protected")
         # restore
         print("[*] restoring para original...")
@@ -83,7 +89,7 @@ def main():
         rb2 = rb2[0] if isinstance(rb2, tuple) else rb2
         print(f"[*] para restore: {'OK' if rb2 == orig else 'MISMATCH'}")
         return 0
-    elif rb == orig:
+    elif rb and not isinstance(rb, bool) and rb == orig:
         print("[-] para UNCHANGED — program phase does NOT commit (global write issue)")
         return 1
     else:
