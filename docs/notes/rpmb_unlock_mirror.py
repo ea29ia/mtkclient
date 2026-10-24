@@ -52,6 +52,10 @@ BEFORE = "/home/musin/rpmb_mirror_before.bin"
 NEW = "/home/musin/rpmb_mirror_new.bin"
 GO = os.environ.get("MIRROR_WRITE_GO", "0") == "1"
 RESTORE = os.environ.get("MIRROR_RESTORE", "0") == "1"
+# IMPORTANT: with the USB cable attached the MTK preloader stops and waits for
+# DA instead of booting.  Use this flag, unplug the cable, then power the phone
+# on manually.
+NO_REBOOT = os.environ.get("UNLOCK_NO_REBOOT", "0") == "1"
 
 
 def show(blk: bytes, label: str):
@@ -271,6 +275,12 @@ def main():
           "mirror should be rewritten by LK as unlocked.")
     print("[*] after boot: `lsusb | grep 22d9`, `fastboot devices`, `adb devices`, "
           "then `./run_seccfg_snapshot.sh` to confirm persistence.")
+    if NO_REBOOT:
+        print("[!] UNLOCK_NO_REBOOT=1: NOT rebooting. NOW unplug the USB cable, "
+              "hold Power ~10 s (force off), release, press Power ~3 s to boot, "
+              "wait 90 s WITHOUT the cable, then plug it back and check `lsusb` "
+              "(expect 22d9:2046).")
+        return 0
     try:
         loader.shutdown(bootmode=loader.ShutDownModes.NORMAL)
     except Exception as e:  # noqa: BLE001
