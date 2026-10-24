@@ -306,8 +306,20 @@ def one_cycle(only_token=None, order_mode=None):
     hit = meaningful(r)
     if hit:
         save_state(0)
-        # token accepted — watch where the device goes next
-        watch_reenumerate()
+        # Token accepted. The preloader consumed our handshake and now sits
+        # in bldr_handshake (MTK download protocol) on the SAME VCOM session
+        # with boot_mode=0x63 (FASTBOOT) alive in SRAM (0x2F4264). Release
+        # the USB and let the DA session attach on this very instance —
+        # its shutdown(FASTBOOT) path is the downstream consumer of 0x63.
+        watch_reenumerate(seconds=5)
+        try:
+            usb.util.dispose_resources(dev)
+        except Exception:
+            pass
+        log("[+] token hit on LIVE preloader instance. NOW, within ~10 s, run:")
+        log("    ./run_reboot_fastboot.sh     (it connects to THIS VCOM)")
+        log("[*] holding the port open 60 s to keep the window visible...")
+        time.sleep(60)
     else:
         save_state(idx + 1)
     log("=== CYCLE SUMMARY ===")
