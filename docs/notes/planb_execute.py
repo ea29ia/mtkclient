@@ -133,8 +133,8 @@ def main():
     chk = chk[0] if isinstance(chk, tuple) else chk
     if chk and chk[:4] == b"MMMM":
         import struct
-        ver, size, _x, lock, dmv, sboot, endf = struct.unpack("<7I", chk[:28])
-        print(f"[*] readback: ver={ver} size={size:#x} lock_state={lock} "
+        magic, ver, size, lock, dmv, sboot, endf = struct.unpack("<7I", chk[:28])
+        print(f"[*] readback: magic={magic:#x} ver={ver} size={size:#x} lock_state={lock} "
               f"dm_verity={dmv:#x} sboot={sboot:#x} end={endf:#x}")
         if lock == 3:
             print("[+] WRITE COMMITTED — lock_state=3 in flash")
