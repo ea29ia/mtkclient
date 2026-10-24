@@ -1,11 +1,31 @@
 #!/usr/bin/env python3
-"""RGU nibble experiment v2 — via the PROVEN CUSTOMMEMR/CUSTOMMEMW primitives
-(the same mechanism as the BROM dump, which worked on this unit).
+"""RGU nibble experiment v3 — РАБОЧИЙ метод записи в 0x10007024.
+
+ПРИЧИНА БАГА v1 (proven, re-rgu-write.md §1): handler CMD:CUSTOMMEMW
+в payloads/da_xml.bin (Thumb @0x448) НЕ ИМЕЕТ инструкции записи — он читает
+адрес (8Б), длину (4Б) и данные (≤4Б) в собственный стек (данные затирают
+буфер адреса) и возвращает 0 = OK. Поэтому custom_write() возвращал True,
+а регистр оставался нетронутым. Никакого "APB bridge" (ai.txt §1) нет.
+
+РАБОЧИЙ метод [proven по дизасму handler'а 0x48c]: CMD:CUSTOMREGW
+(custom_writeregister) — читает 4Б адреса + 4Б значения и делает прямой
+`str r0,[r1]` без каких-либо проверок адреса. DA2 сам пишет 0x10007024
+такими же прямыми str (re-da2-bootmode-reboot.md §1.1/§4.3), т.е. регион
+отображён и доступен на запись; unlock-последовательностей RGU нет.
+
+Резервный метод [inferred, high]: heapbait.patch_mem (CMD:EXP-PATCH-MEM) —
+уже писал в RAM DA2 (0x4005455c); адрес передаётся как VA, RGU в том же
+адресном пространстве identity-mapped.
+
+ВНИМАНИЕ: EXP-CALL-FUNC(0x4002a520) как fallback НЕ годится: (1) хендлер
+EXP-CALL-FUNC парсит только da/arg/address — r0 не передаётся; (2) сам
+0x4002a520 пишет ниббль в биты [7:4] (orr r0,lsl#4 после bic 0xff0), а
+SET-BOOT-MODE/LK-семантика требует биты [3:0] (bfi #0,#4).
 
 Session A:
   1) connect,
-  2) custom_read 0x10007024 -> print nibble[3:0] (baseline; expect 0),
-  3) custom_write bits[3:0] = 3 (FASTBOOT per LK priority table),
+  2) custom_readregister 0x10007024 -> nibble[3:0] (baseline; expect 0),
+  3) custom_writeregister bits[3:0] = 3 (FASTBOOT per LK priority table),
   4) re-read -> verify,
   5) reboot (WDT SW-reset path preserves [3:0] — proven static).
 
@@ -39,8 +59,9 @@ def read_word(loader):
 
 
 def write_word(loader, val):
-    # CUSTOMREGW performs a true 32-bit STR (APB-safe). CUSTOMMEMW's
-    # byte-wise copy is silently dropped by the APB bridge (ai.txt §1).
+    # CUSTOMREGW (shellcode handler Thumb @0x48c): recv 4B addr + 4B value,
+    # затем прямой `str r0,[r1]`. CUSTOMMEMW НЕ ПИШЕТ вообще — его handler
+    # (@0x448) не содержит ни одной store-инструкции (re-rgu-write.md §1).
     ok = loader.xmlft.custom_writeregister(RGU, val)
     print(f"[dbg] custom_writeregister -> {ok}")
     return ok
@@ -50,7 +71,11 @@ def main():
     import argparse
     import mtk as mtk_cli
     check = "--check" in sys.argv
-    sys.argv = [a for a in sys.argv if a != "--check"]
+    nib = None
+    for i, a in enumerate(sys.argv):
+        if a == "--nibble" and i + 1 < len(sys.argv):
+            nib = int(sys.argv[i + 1], 0)
+    sys.argv = [a for a in sys.argv if a not in ("--check", "--nibble") and a != str(nib)]
     parser = mtk_cli.create_base_parser()
     parser = argparse.ArgumentParser(parents=[parser], description=mtk_cli.INFO)
     sub = parser.add_subparsers(dest='cmd', required=False)
@@ -72,35 +97,33 @@ def main():
 
     if check:
         n = val & 0xF
-        if n == 3:
-            print("[!!!] NIBBLE SURVIVED the reset chain (== 3). LK *must* have")
-            print("     seen FASTBOOT — if the phone booted normal, the loss is")
-            print("     AFTER RGU: check LK-side read path / oplus boot-arg hooks.")
-        elif n == 0:
-            print("[!] NIBBLE LOST in the reset chain (== 0). DA2->fastboot via")
-            print("    RGU is IMPOSSIBLE on this unit; button combos remain.")
-        else:
-            print(f"[?] unexpected nibble {n:#x}")
+        print(f"[*] NEXT-BOOT nibble = {n:#x} "
+              + ("(consumed by LK — channel WORKS)" if n == 0 else
+                 "(SURVIVED — LK never ran?)"))
         return 0
 
-    newval = (val & ~0xF) | 3
+    nibble = nib if nib is not None else 3
+    newval = (val & ~0xF) | nibble
     ok = write_word(loader, newval)
     if not ok:
-        print("[-] custom_writeregister failed — falling back to EXP-CALL-FUNC nibble-setter 0x4002a520")
+        print("[-] custom_writeregister failed — fallback: heapbait EXP-PATCH-MEM")
+        import struct
         try:
-            resp = loader.xmlft.heapbait.call_func(0x4002a520)
-            print(f"[dbg] call_func -> {resp!r}")
+            ok = loader.xmlft.heapbait.patch_mem(RGU, struct.pack("<I", newval))
+            print(f"[dbg] patch_mem -> {ok}")
         except Exception as e:
-            print(f"[!] call_func error: {e!r}")
+            print(f"[!] patch_mem error: {e!r}")
     val2 = read_word(loader)
     if val2 is None:
         print("[-] verify read failed")
         return 1
     print(f"[*] after write: 0x{RGU:08x} = {val2:#010x}, nibble = {val2 & 0xF:#x}")
-    if (val2 & 0xF) != 3:
+    if (val2 & 0xF) != nibble:
         print("[-] write did not stick — aborting before reboot")
         return 1
-    print("[+] nibble 3 set. Rebooting (WDT SW-reset preserves [3:0])...")
+    names = {2: "RECOVERY", 3: "FASTBOOT", 4: "FACTORY", 1: "META/RECOVERY"}
+    nname = names.get(nibble, f"mode-{nibble:#x}")
+    print(f"[+] nibble {nibble} ({nname}) set. Rebooting (WDT SW-reset preserves [3:0])...")
     try:
         loader.shutdown(bootmode=loader.ShutDownModes.NORMAL)
     except Exception as e:
