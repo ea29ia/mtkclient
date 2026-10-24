@@ -15,7 +15,7 @@ mtk = mtk_main.run(parser)
 if mtk is None:
     print("[-] connect failed"); sys.exit(1)
 loader = mtk.daloader
-xf = loader.xmlft if hasattr(loader, "xmlft") else loader.xflash
+xf = loader.xmlft.xflash  # send_command/get_command_result/download/ack live on xflash
 data, gpt = loader.get_gpt(parttype="user")
 seccfg = next((p for p in gpt.partentries if p.name.lower()=="seccfg"), None)
 ss = gpt.sectorsize
@@ -23,6 +23,7 @@ ss = gpt.sectorsize
 def read_partition_by_name(name, fn="/tmp/seccfg_rp.bin"):
     """CMD:READ-PARTITION: whole partition by name, UpFile download flow."""
     from mtkclient.Library.DA.xmlflash.xml_lib import UpFile
+    xf = loader.xmlft.xflash  # send_command/get_command_result/download/ack live on xflash
     xf.send_command(xf.cmd.cmd_read_partition(name), noack=True)
     cmd, result = xf.get_command_result()
     if type(result) is not UpFile:
