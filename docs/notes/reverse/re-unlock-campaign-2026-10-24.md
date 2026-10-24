@@ -343,3 +343,39 @@ sha256(0..0x3E0) == stored[0x3E0..0x400]        -> hash VALID
 Риск: удачная запись сдвигает аппаратный счётчик RPMB; t-base SFSRP может
 один раз упасть в «Mismatch between the counters» (trustedStorage/widevine
 недоступны на этот бут). Откат — тем же ключом из сохранённого блока.
+
+---
+
+## 4ter. UPDATE 2026-10-24 21:46 — RPMB mirror WRITTEN (test11)
+
+`MIRROR_WRITE_GO=1 ./run_rpmb_unlock_mirror.sh` (log `/home/musin/test11`):
+
+```
+[*] current mirror: sboot=0 dev_info=1 bootmode=0 locked=1 aux=0x0  hash VALID
+[!] WRITING mirror blocks 0x1dc..0x1df with key D ...
+[*] rpmb write returned True
+[*] after write: sboot=0 dev_info=1 bootmode=0 locked=0 aux=0x0  hash VALID
+[+] MIRROR UPDATED: locked=0, hash valid
+[+] seccfg backup: …214627.bin (md5 12a94a3ffbfc1a7f344e1dd6837b359a)
+[!] WRITING seccfg lock=3 (0x800000 B) ...
+[*] readback: … lock=3 dm_verity=0x0 sboot=0x0 end=0x45454545
+[+] MIRROR=unlocked + seccfg lock=3 written in the same session
+```
+
+**The SEJ-derived key `75a41c1a…` IS the device RPMB key** — the authenticated
+write on UFS was accepted and the readback shows the new content. This is the
+first confirmed RPMB *write* path on this unit and it contradicts the earlier
+"da rpmb is eMMC-only" inference (reads and writes both worked once the
+address was corrected to block 0x1DC).
+
+State written before the reboot: `seccfg lock=3`, mirror `locked=0` + valid
+SHA-256. Original mirror saved at `/home/musin/rpmb_mirror_before.bin`
+(md5 `2374972d…`); the unlocked block at `/home/musin/rpmb_mirror_new.bin`
+(md5 `11a2d0c1…`).
+
+**After the reboot the device did not enumerate as Android**: it re-enumerated
+as `22d9:0006` (preloader) repeatedly (~110 s cycle per dmesg). Not yet
+diagnosed — could be the power-off/boot sequence, a preloader-side loop, or a
+side effect of the RPMB write counter. Next step: full power cycle, then
+`run_unlock_state_check.sh` (read-only) to see whether
+`seccfg=3` + `mirror locked=0` survived.
