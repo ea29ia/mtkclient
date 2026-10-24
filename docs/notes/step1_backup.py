@@ -13,8 +13,10 @@ Sequence:
 """
 import sys, os, hashlib, time
 
-sys.path.insert(0, "/root/mtkclient")
-os.chdir("/root/mtkclient")
+MTK_DIR = os.environ.get("MTK_DIR", "/root/mtkclient")
+OUT_DIR = os.environ.get("STEP1_OUT", "/root")
+sys.path.insert(0, MTK_DIR)
+os.chdir(MTK_DIR)
 
 
 def main():
@@ -65,7 +67,7 @@ def main():
     print(f"[+] seccfg LBA {target.sector:#x}..{target.sector+target.sectors:#x} size {size:#x} @ {addr:#x}")
 
     ts = time.strftime("%Y%m%d_%H%M%S")
-    out = f"/root/seccfg_backup_{ts}.bin"
+    out = os.path.join(OUT_DIR, f"seccfg_backup_{ts}.bin")
     ok = loader.xflash.readflash(
         addr=addr, length=size, filename=out, parttype="user", display=True)
     if not ok:
