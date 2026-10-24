@@ -17,3 +17,4 @@ dist
 
 # Local reverse-engineering analysis (not for the repository)
 analysis/
+.venv/
