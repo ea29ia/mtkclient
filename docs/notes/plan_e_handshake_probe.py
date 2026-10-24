@@ -40,8 +40,18 @@ except ImportError:
 VID = int(os.environ.get("PLANE_VID", "0x22d9"), 16)
 PID = int(os.environ.get("PLANE_PID", "0x0006"), 16)
 
+# Meaningful hits only. A bare 'U' (0x55) right after our first OUT is
+# treated as a probable SYNC ACK (seen live, reproducible), NOT a token
+# response — it must not stop the variant round-robin.
+MAGICS = (b"TOOBTSAF", b"AT+OK", b"forbidden", b"ATEM", b"DISCONNECT")
+STATE_FILE = "/tmp/.plan_e_state"  # round-robin progress across cycles
+
+
+def meaningful(resp):
+    return resp and any(m in resp for m in MAGICS)
+
+# (token, expected response, gated?)
 TOKENS = [
-    # (token, expected response, gated?)
     ("FASTBOOT", "TOOBTSAF", False),
     ("AT+NBOOT", "AT+OK", False),
     ("METAMETA", "?", True),      # expect forbidden / nothing — control probes
@@ -177,6 +187,7 @@ def printable(b):
 def probe(token, mode, eps, dev_addr):
     """Send variants: combo / split / raw / sync1 (see SEND_VARIANTS)."""
     ep_out, ep_in, _ = eps
+    t0 = time.time()
     log(f"=== probe token={token!r} mode={mode} ===")
     tok = token.encode()
     try:
@@ -192,10 +203,10 @@ def probe(token, mode, eps, dev_addr):
             log(f"sent token {len(tok)} B: {token}")
         elif mode == "sync1":
             ep_out.write(b"\xa0", timeout=2000)
-            log("sent single sync 0xA0 — listening for sync ack...")
+            log("sent single sync 0xA0 — listening for sync ack (0x55?)...")
             ack = drain(ep_in, 2500, ignore_noise=True)
             if ack:
-                log(f"[i] sync ack {len(ack)} B: {printable(ack)}")
+                log(f"[i] sync ack after 0xA0 ({time.time()-t0:.1f}s): {printable(ack)}")
             ep_out.write(tok, timeout=2000)
             log(f"sent token {len(tok)} B: {token}")
         else:  # raw
@@ -206,16 +217,37 @@ def probe(token, mode, eps, dev_addr):
         return None
     resp = drain(ep_in, 11000, ignore_noise=True)  # full 8/10 s timeout window
     if resp:
-        log(f"[+] RESPONSE {len(resp)} B: {printable(resp)}")
-        for expect, _, gated in TOKENS:
+        log(f"[+] RESPONSE {len(resp)} B ({time.time()-t0:.1f}s after write): {printable(resp)}")
+        for expect, _, _ in TOKENS:
             if expect.encode() in resp:
-                log(f"[+] contains {expect!r} (gated={gated})")
-        for magic in (b"TOOBTSAF", b"AT+OK", b"forbidden", b"ATEM", b"DISCONNECT"):
+                log(f"[+] contains {expect!r}")
+        for magic in MAGICS:
             if magic in resp:
                 log(f"[!!!] MATCH {magic!r} — handshake hit")
     else:
-        log("[-] no meaningful response in 11 s (device will reboot in ~5 s)")
+        log(f"[-] no meaningful response in 11 s (EIO={GONE['flag']}, {time.time()-t0:.1f}s total)")
     return resp
+
+
+def load_state():
+    try:
+        return int(open(STATE_FILE).read().strip())
+    except Exception:
+        return 0
+
+
+def save_state(i):
+    open(STATE_FILE, "w").write(str(i))
+
+
+def build_pairs(tokens, modes):
+    # priority: FASTBOOT variants first, then AT+NBOOT, then controls
+    prio = {"FASTBOOT": 0, "AT+NBOOT": 1}
+    pairs = []
+    for tok in sorted(tokens, key=lambda t: prio.get(t, 9)):
+        for m in modes:
+            pairs.append((tok, m))
+    return pairs
 
 
 def one_cycle(only_token=None, order_mode=None):
@@ -243,24 +275,27 @@ def one_cycle(only_token=None, order_mode=None):
         return False
     tokens = [only_token] if only_token else [t for t, _, _ in TOKENS]
     modes = list(order_mode) if order_mode else list(SEND_VARIANTS)
-    results = {}
-    for tok in tokens:
-        for m in modes:
-            if GONE["flag"]:
-                log("[i] device gone — skipping remaining probes")
-                break
-            GONE["flag"] = False  # reset per probe
-            r = probe(tok, m, eps, dev.address)
-            results[f"{tok}/{m}"] = r
-            if r:
-                break  # got a response for this token — next token
+    pairs = build_pairs(tokens, modes)
+    idx = load_state() % len(pairs)
+    tok, mode = pairs[idx]
+    log(f"[i] round-robin step {idx + 1}/{len(pairs)}: {tok}/{mode} "
+        f"(state file {STATE_FILE}; delete to restart)")
+    r = probe(tok, mode, eps, dev.address)
+    hit = meaningful(r)
+    save_state(idx + 1 if not hit else 0)
     log("=== CYCLE SUMMARY ===")
-    for k, v in results.items():
-        log(f"  {k}: {'RESP ' + printable(v) if v else 'no response'}")
+    log(f"  {tok}/{mode}: "
+        + (f"RESP {printable(r)}" if r else "no response")
+        + ("  <<< MATCH" if hit else ""))
+    if hit:
+        log("[+] handshake response confirmed — STOP and analyze before writes")
+    elif GONE["flag"]:
+        log("[i] device rebooted ~5 s after write — consistent with the "
+            "failed-handshake reboot path (dispatcher DID see our data)")
     fn = f"/tmp/plan_e_probe_{time.strftime('%H%M%S')}.log"
     open(fn, "w").write("\n".join(LOG) + "\n")
     log(f"log saved: {fn}")
-    return any(v for v in results.values())
+    return hit
 
 
 def main():
@@ -284,7 +319,9 @@ def main():
                 break
             except Exception as e:
                 log(f"[!] cycle error: {e!r}")
-            log("cycle done; device rebooting — next cycle re-arms")
+            log("cycle done; device rebooting — next cycle re-arms with the "
+                "next variant")
+        log("[i] all variants tried — Plan E exhausted; proceed with step1/Plan A")
     else:
         ok = one_cycle(a.token, a.order)
         return 0 if ok else 1
