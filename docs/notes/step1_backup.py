@@ -28,7 +28,9 @@ def main():
     parser = mtk_cli.create_base_parser()
     parser = argparse.ArgumentParser(parents=[parser],
                                      description=mtk_cli.INFO)
-    args = parser.parse_args(sys.argv[1:])
+    sub = parser.add_subparsers(dest='cmd', required=False)
+    sub.add_parser('custom')  # placeholder: we drive the DA API directly
+    args = parser.parse_args(sys.argv[1:] + ['custom'])
     from mtkclient.Library.mtk_main import Main
     mtk_main = Main(args)
     mtk = mtk_main.run(parser)
