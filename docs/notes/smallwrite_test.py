@@ -68,7 +68,3 @@ try:
 except Exception as e:
     print(f"[-] same-session readback failed: {e!r}")
 print("[*] smallwrite done")
-EOF
-sed -i 's|/tmp/test_smallwrite.py|docs/notes/smallwrite_test.py|' /home/musin/run_smallwrite.sh
-# readback in planb_execute: 0x1000 instead of 0x1000? check current
-grep -n "length=0x1000\|length=0x200" docs/notes/planb_execute.py
