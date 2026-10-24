@@ -88,20 +88,42 @@ def parse_lp(rd: Reader):
     hdr_off = _scan_magic(rd, geo_off, geo_off + 0x40000, LP_HDR_MAGIC)
     if hdr_off is None:
         raise ValueError("LP metadata header magic not found")
-    hsize = struct.unpack_from("<I", rd.read(hdr_off, 8), 4)[0]
     hdr = rd.read(hdr_off, max(0x100, min(meta_max, 0x10000)))
     m, major, minor, hs = struct.unpack_from("<IHHI", hdr, 0)
     if m != LP_HDR_MAGIC:
         raise ValueError(f"bad LP header magic {m:#x}")
-    tables_size = struct.unpack_from("<I", hdr, 16)[0]
-    parts_off, parts_num, ext_off, ext_num, grp_off, grp_num, bdev_off, bdev_num = \
-        struct.unpack_from("<8I", hdr, 24)
-    print(f"[*] LP header @{hdr_off:#x} v{major}.{minor} hdr={hs} tables={tables_size:#x} "
-          f"parts={parts_num} extents={ext_num}")
-    base = hs
+    print(f"[*] LP header @{hdr_off:#x} v{major}.{minor} hdr={hs}")
+    print(f"[*] header raw[0:0x60]: {hdr[:0x60].hex()}")
+
+    def desc(off):
+        return struct.unpack_from("<III", hdr, off)
+
+    # The 4 descriptors are 12 bytes each (offset, num_entries, entry_size).
+    # The base can shift by a few bytes between liblp revisions, so pick the
+    # candidate whose entry sizes and counts are sane.
+    chosen = None
+    for cand in range(16, 40, 2):
+        po, pn, pe = desc(cand)
+        eo, en, ee = desc(cand + 12)
+        if 16 <= cand <= 32 and pe == 52 and ee == 24 and 0 < pn < 100 and 0 < en < 10000 \
+                and po < len(hdr) and eo < len(hdr):
+            chosen = (cand, po, pn, eo, en)
+            break
+    if chosen is None:
+        print("[!] descriptor layout not recognised; candidates:")
+        for cand in range(16, 40, 4):
+            try:
+                print(f"    @{cand:#04x}: {desc(cand)} / {desc(cand + 12)}")
+            except Exception:
+                pass
+        raise ValueError("cannot parse LP table descriptors")
+    base_off, parts_off, parts_num, ext_off, ext_num = chosen
+    print(f"[*] tables @0x{base_off:x}: parts(off={parts_off} n={parts_num}) "
+          f"extents(off={ext_off} n={ext_num})")
+    base = base_off
     parts = []
     for i in range(parts_num):
-        e = hdr[base + parts_off + i * 52: base + parts_off + (i + 1) * 52]
+        e = hdr[parts_off + i * 52: parts_off + (i + 1) * 52]
         if len(e) < 52:
             break
         name = e[:36].split(b"\x00")[0].decode()
@@ -109,7 +131,7 @@ def parse_lp(rd: Reader):
         parts.append(dict(name=name, first_ext=first_ext, num_ext=num_ext))
     exts = []
     for i in range(ext_num):
-        e = hdr[base + ext_off + i * 24: base + ext_off + (i + 1) * 24]
+        e = hdr[ext_off + i * 24: ext_off + (i + 1) * 24]
         if len(e) < 24:
             break
         num_sectors, ttype, tdata, tsrc = struct.unpack("<QIQI", e)
