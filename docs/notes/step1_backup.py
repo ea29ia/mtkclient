@@ -13,8 +13,10 @@ Sequence:
 """
 import sys, os, hashlib, time
 
-MTK_DIR = os.environ.get("MTK_DIR", "/root/mtkclient")
-OUT_DIR = os.environ.get("STEP1_OUT", "/root")
+MTK_DIR = os.environ.get(
+    "MTK_DIR",
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+OUT_DIR = os.environ.get("STEP1_OUT", MTK_DIR)
 sys.path.insert(0, MTK_DIR)
 os.chdir(MTK_DIR)
 

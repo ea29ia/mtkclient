@@ -102,12 +102,18 @@ def open_endpoints(dev):
     return None
 
 
+GONE = {"flag": False}  # set when the port dies (EIO) — device rebooted
+
+
 def read_any(ep_in, timeout_ms):
-    """Read whatever arrives; return bytes or b'' on timeout."""
+    """Read whatever arrives; return bytes or b'' on timeout/port error."""
     try:
         return bytes(ep_in.read(ep_in.wMaxPacketSize, timeout=timeout_ms))
     except usb.core.USBError as e:
         if e.errno in (110, 7, 60, 10060):  # timeout family
+            return b""
+        if e.errno == 5:  # EIO — preloader rebooted / CDC spam hazard.
+            GONE["flag"] = True  # do NOT clear_halt (do-not-repeat list)
             return b""
         raise
 
@@ -120,6 +126,9 @@ def drain(ep_in, total_ms=3000):
         chunk = read_any(ep_in, 300)
         if chunk:
             out += chunk
+        elif GONE["flag"]:
+            log("[i] port died (EIO) — preloader rebooted, stopping read")
+            break
         else:
             if out:  # one idle gap after data = end of burst
                 break
@@ -169,15 +178,22 @@ def one_cycle(only_token=None, order_mode="both"):
         print(dev)
         return False
     # passive listen first: maybe the preloader sends 0xA0 to us (sync direction)
-    log("[*] passive listen 12 s (does the preloader send 0xA0 first?)")
-    pre = drain(eps[1], 12000)
+    log("[*] passive listen 3 s (does the preloader send 0xA0 first?)")
+    pre = drain(eps[1], 3000)
     if pre:
         log(f"[!] unsolicited from device {len(pre)} B: {printable(pre)}")
         if b"\xa0" in pre:
             log("[!] device sent sync 0xA0 — reply with tokens next!")
+    if GONE["flag"]:
+        log("[i] device rebooted during passive listen — cycle ends, re-arm")
+        return False
     tokens = [only_token] if only_token else [t for t, _, _ in TOKENS]
     results = {}
     for tok in tokens:
+        if GONE["flag"]:
+            log("[i] device gone — skipping remaining probes")
+            break
+        GONE["flag"] = False  # reset per probe
         orders = ["a0_first", "token_first"] if order_mode == "both" else [order_mode]
         for od in orders:
             r = probe(tok, od, eps, dev.address)
