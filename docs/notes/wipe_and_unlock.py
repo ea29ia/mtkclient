@@ -40,6 +40,12 @@ from planb_recon2 import rpmbk_set_key, rpmbi_derive, read_rpmb_range  # noqa: E
 MIRROR_BLOCK = 0x1DC
 MIRROR_N = 4
 GO = os.environ.get("WIPE_GO", "0") == "1"
+# A full ERASE-FLASH of a 115 GB userdata can take hours (the DA may zero it
+# instead of unmapping).  Wiping the first 16 MB kills both f2fs/ext4 superblocks
+# and is enough for Android to reformat /data.  Set WIPE_FULL_USERDATA=1 for a
+# full-length erase.
+FULL_UD = os.environ.get("WIPE_FULL_USERDATA", "0") == "1"
+UD_ERASE = 0x1000000
 SECCFG_STOCK = "/home/musin/seccfg_backup.bin"
 MIRROR_LOCKED = "/home/musin/rpmb_mirror_locked.bin"
 
@@ -120,11 +126,13 @@ def main():
         print(f"[!] metadata erase exception: {e!r}")
     print(f"[*] metadata erase -> {md_ok} ({time.time() - t0:.1f}s)")
 
-    print("[!] erasing userdata (full, UFS unmap) — this may take a while ...")
+    ud_len = ufull if FULL_UD else min(ufull, UD_ERASE)
+    print(f"[!] erasing userdata first {ud_len:#x} bytes "
+          f"({'FULL partition' if FULL_UD else 'superblock area; WIPE_FULL_USERDATA=1 for full'}) ...")
     t0 = time.time()
     ud_ok = False
     try:
-        ud_ok = loader.formatflash(addr=ubase, length=ufull, parttype="user", display=True)
+        ud_ok = loader.formatflash(addr=ubase, length=ud_len, parttype="user", display=True)
     except Exception as e:  # noqa: BLE001
         print(f"[!] userdata erase exception: {e!r}")
     print(f"[*] userdata erase -> {ud_ok} ({time.time() - t0:.1f}s)")
@@ -141,9 +149,12 @@ def main():
         xmlft.seccfg_write_partition(mp, z)
         xmlft.seccfg_write_partition(mp, bytes(0x1000))
     if sum(1 for x in uh if x) > 0:
-        print("[!] userdata still has data — zeroing the first 16 MB "
+        print("[!] userdata head still has data — zeroing the first 16 MB "
               "(kills both f2fs/ext4 superblocks) ...")
-        xmlft.seccfg_write_partition(up, bytes(0x1000000))
+        xmlft.seccfg_write_partition(up, bytes(ud_len))
+        uh = rd(loader, ubase, 0x1000)
+        print(f"[*] userdata head after zeroing: {uh[:32].hex()} "
+              f"(nonzero={sum(1 for x in uh if x)})")
 
     # ---------- 3. ensure unlocked ----------
     if lock != 3:
