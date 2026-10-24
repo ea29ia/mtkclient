@@ -26,13 +26,25 @@ def main():
         return 1
     loader = mtk.daloader
     print("[*] sending reboot-to-fastboot (ShutDownModes.FASTBOOT)...")
-    try:
-        loader.shutdown(bootmode=loader.ShutDownModes.FASTBOOT)
-        print("[+] sent. Watch the USB: device should re-enumerate as fastboot "
-              "(Google 18d1:4ee0/4ee8 or similar).")
-    except Exception as e:
-        print(f"[!] shutdown call: {e!r} (device may have dropped already)")
-    return 0
+    # The session ran with OPLUS_LEGACY_HOST=1 (single-shot, no retry). The
+    # first SET-BOOT-MODE can hit the EIO class hazard — enable the proven
+    # retry path in send_command just for the shutdown phase, and retry the
+    # whole call a few times.
+    os.environ["OPLUS_LEGACY_HOST"] = "0"
+    import time
+    for attempt in range(3):
+        try:
+            if loader.shutdown(bootmode=loader.ShutDownModes.FASTBOOT):
+                print("[+] shutdown OK. Watch the USB: device should "
+                      "re-enumerate as fastboot (18d1:4ee0/4ee8 or similar).")
+                return 0
+            print(f"[-] shutdown attempt {attempt + 1} returned False")
+        except Exception as e:
+            print(f"[!] shutdown attempt {attempt + 1}: {e!r}")
+        time.sleep(1.0)
+    print("[!] all attempts failed — device may reboot to normal mode; "
+          "check lsusb for 22d9:2046")
+    return 1
 
 
 if __name__ == "__main__":
