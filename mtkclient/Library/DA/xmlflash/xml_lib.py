@@ -977,6 +977,17 @@ class DAXML(metaclass=LogBase):
             else:
                 self.info("ERASE-FLASH deny-check patch skipped "
                           "(set OPLUS_PATCH_ERASE_DENY=1 to enable; target 0x4000392c)")
+            # Erase-kill for the WRITE-FLASH handler (audit-proven SAFE,
+            # re-writeflash-scrubber.md §5): 0x4000325c blx r2 = the
+            # unconditional whole-range ERASE that zeroed seccfg. Patch to
+            # MOV R0,#0: handler sees "erase ok" and goes straight to the
+            # data phase. On UFS programming over non-erased LBAs is fine.
+            if _os.environ.get("OPLUS_PATCH_ERASE_KILL", "0") == "1":
+                patches.append(("WRITE-FLASH erase-call 0x4000325c -> MOV R0,#0",
+                                0x4000325c, b"\x00\x00\xa0\xe3"))
+            else:
+                self.info("WRITE-FLASH erase-kill patch skipped "
+                          "(set OPLUS_PATCH_ERASE_KILL=1; target 0x4000325c)")
             # The deny that actually fires for WRITE-FLASH(seccfg) is INSIDE the
             # WRITE-FLASH handler (0x40002e60) at 0x400031d4: after the policy
             # parse (BL 0x4002cf68) it checks TWO flag bytes -
