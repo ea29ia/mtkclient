@@ -17,9 +17,13 @@ KEYS = ("orange", "unlock", "lock", "rpmb", "watchdog", "wdt", "panic", "fail",
         "dm-verity", "dm_verity", "avb", "slot")
 
 
-def get(xmlft, addr, length):
-    d = xmlft.custom_read(addr, length)
-    return bytes(d) if d else b""
+def get(loader, addr, length):
+    d = loader.readflash(addr=addr, length=length, filename="", parttype="user",
+                         display=False)
+    d = d[0] if isinstance(d, tuple) else d
+    if not d or isinstance(d, bool):
+        return b""
+    return bytes(d[:length])
 
 
 def main():
@@ -44,7 +48,7 @@ def main():
         if p is None:
             print(f"[-] no partition {name}"); return None
         n = min(length, p.sectors * ss)
-        d = get(xmlft, p.sector * ss, n)
+        d = get(loader, p.sector * ss, n)
         print(f"[*] {name}: LBA {p.sector:#x} size {p.sectors*ss:#x}, read {len(d):#x}")
         return d
 
