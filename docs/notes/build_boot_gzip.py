@@ -78,6 +78,27 @@ def main():
         "persist.sys.usb.config=adb\n"
     ).encode()
 
+    # --- patch first-stage init: always export INIT_FORCE_DEBUGGABLE ---
+    # 0x2F6D14: "tbz w19, #0, 0x2F6DA4" (branch to setenv only when BOTH copies
+    # succeeded; the .cil copy always fails on a user build) -> "b 0x2F6DA4".
+    INIT_PATCH_OFF = 0x2F6D14 - 0x200000
+    INIT_ORIG = bytes.fromhex('93040036')
+    INIT_NEW = bytes.fromhex('24000014')
+    init_patched = False
+    for e in ents:
+        if e['name'] == 'init':
+            b = bytearray(e['data'])
+            if bytes(b[INIT_PATCH_OFF:INIT_PATCH_OFF + 4]) != INIT_ORIG:
+                print('[-] init: unexpected bytes at the patch site — ABORT')
+                return 1
+            b[INIT_PATCH_OFF:INIT_PATCH_OFF + 4] = INIT_NEW
+            e['data'] = bytes(b)
+            init_patched = True
+            print(f"[+] init patched @{INIT_PATCH_OFF:#x}: tbz -> b (env always set)")
+    if not init_patched:
+        print('[-] init entry not found')
+        return 1
+
     def add_file(name, data, mode=0o100644):
         for e in ents:
             if e['name'] == name:
