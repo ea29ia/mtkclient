@@ -208,8 +208,14 @@ def rpmb_key_status(xmlft):
             if i != -1:
                 j = text.find(f"</{field}>", i)
                 print(f"[+] {field} = {text[i + len(field) + 2:j]}")
-        up = "EXIST" in text
-        print(f"[+] verdict: RPMB key {'EXIST (programmed)' if up else 'NOT-EXIST? (check raw above)'}")
+        # NOTE: "NOT-EXIST" contains the substring "EXIST" — check the
+        # negative form first (the old order mis-reported NOT-EXIST as EXIST).
+        if "NOT-EXIST" in text:
+            print("[+] verdict: RPMB key NOT-EXIST (not programmed, per DA)")
+        elif "EXIST" in text:
+            print("[+] verdict: RPMB key EXIST (programmed, per DA)")
+        else:
+            print(f"[!] verdict: unparsed ({text!r})")
         return text
     except Exception as e:
         print(f"[-] key-status parse error: {e!r}")
