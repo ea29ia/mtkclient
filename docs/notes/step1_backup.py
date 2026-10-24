@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
-"""Session step 1: connect, GET-HW-INFO (battery!), backup seccfg, verify.
+"""Session backup step: connect, GET-HW-INFO (battery!), full seccfg backup,
+plus critical-partition backups. Verify offline.
 
-Run from proot via rootbridge (real root, Termux-native python):
-  python3 /data/data/com.termux/files/home/step1_backup.py
+Hosts:
+  PC:   ./run_backup.sh   (MTK_DIR defaults to this repo; outputs to /home/musin)
+  Termux: MTK_DIR=/root/mtkclient STEP1_OUT=/root python3 step1_backup.py
 
 Sequence:
- 1) standard mtk connect (VCOM -> DA_BR -> heapbait -> OPLUS patches)
+ 1) standard mtk connect (VCOM -> DA_BR -> heapbait -> OPLUS runtime patches)
  2) print GET-HW-INFO fields (battery voltage, ufs info) if available
- 3) read seccfg (full 8MB) -> save /root/seccfg_backup_<ts>.bin
- 4) offline-verify structure (MMMM magic, records)
- 5) md5 + keep device connected for next steps? No — end session cleanly.
+ 3) read seccfg (full) -> OUT_DIR/seccfg_backup_<ts>.bin -> offline verify
+ 4) read critical partitions (nvdata/nvcf, persist, proinfo, frp, misc,
+    oplusstanvbk, param, metadata) -> OUT_DIR/rmx3630_backup_<ts>/
+ 5) md5 manifest written next to the files.
 """
-import sys, os, hashlib, time
+import sys
+import os
+import hashlib
+import time
 
 MTK_DIR = os.environ.get(
     "MTK_DIR",
@@ -19,6 +25,21 @@ MTK_DIR = os.environ.get(
 OUT_DIR = os.environ.get("STEP1_OUT", MTK_DIR)
 sys.path.insert(0, MTK_DIR)
 os.chdir(MTK_DIR)
+
+# Small, safety-critical partitions first; skip huge ones (userdata etc).
+CRITICAL_PARTS = [
+    "seccfg", "nvdata", "nvcf", "persist", "proinfo", "frp", "misc",
+    "oplusstanvbk", "para", "param", "metadata", "protect1", "protect2",
+    "oplusreserve", "reserve1", "reserve2",
+]
+
+
+def md5_of(path):
+    h = hashlib.md5()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def main():
@@ -47,52 +68,63 @@ def main():
     except Exception as e:
         print("[HW] err:", e)
 
-    # Also try the xml get_hw_info if present
-    try:
-        xmlft = getattr(loader, "xmlft", None)
-        if xmlft is None:
-            xmlft = loader.xflash
-        info = xmlft.get_hw_info() if hasattr(xmlft, "get_hw_info") else None
-        print("[HWINFO]", info)
-    except Exception as e:
-        print("[HWINFO] err:", repr(e))
-
-    # 3) seccfg backup via partition read
+    # 3) GPT
     data, gpt = loader.get_gpt(parttype="user")
     if not gpt:
         print("[-] GPT read failed")
         return 1
     ss = getattr(gpt, "sectorsize", 4096) or 4096
-    target = None
-    for part in gpt.partentries:
-        if part.name.lower() == "seccfg":
-            target = part
-            break
-    if target is None:
-        print("[-] seccfg partition not found in GPT")
-        return 1
-    size = target.sectors * ss
-    addr = target.sector * ss
-    print(f"[+] seccfg LBA {target.sector:#x}..{target.sector+target.sectors:#x} size {size:#x} @ {addr:#x}")
 
+    # Save GPT itself
     ts = time.strftime("%Y%m%d_%H%M%S")
-    out = os.path.join(OUT_DIR, f"seccfg_backup_{ts}.bin")
-    ok = loader.xflash.readflash(
-        addr=addr, length=size, filename=out, parttype="user", display=True)
-    if not ok:
-        print("[-] readflash failed")
-        return 1
-    blob = open(out, "rb").read()
-    md5 = hashlib.md5(blob).hexdigest()
-    print(f"[+] saved {out} ({len(blob)} bytes, md5 {md5})")
-    print(f"[*] magic: {blob[:4]!r} (expect MMMM)")
-    if blob[:4] == b"MMMM":
-        import struct
-        ver, rec_size, dmv, sboot, lock = struct.unpack_from("<IIIII", blob, 4)
-        print(f"[*] ver={ver} rec_size={rec_size:#x} dm_verity={dmv} sboot={sboot} lock_state={lock}")
-    nz = sum(1 for b in blob[:0x1000] if b)
-    print(f"[*] first 4KB non-zero bytes: {nz}")
-    print("[+] BACKUP OK — copy this file off-device before any write operation")
+    bdir = os.path.join(OUT_DIR, f"rmx3630_backup_{ts}")
+    os.makedirs(bdir, exist_ok=True)
+    with open(os.path.join(bdir, "gpt.bin"), "wb") as f:
+        f.write(data if isinstance(data, bytes) else bytes(data))
+    print(f"[+] GPT saved to {bdir}/gpt.bin")
+
+    manifest = []
+
+    def backup_part(name):
+        part = None
+        for p in gpt.partentries:
+            if p.name.lower() == name:
+                part = p
+                break
+        if part is None:
+            print(f"[i] '{name}': not in GPT — skipped")
+            return
+        size = part.sectors * ss
+        addr = part.sector * ss
+        out = os.path.join(bdir, f"{name}.img")
+        print(f"[*] {name}: LBA {part.sector:#x}..{part.sector + part.sectors:#x} "
+              f"size {size:#x} ...", flush=True)
+        try:
+            ok = loader.readflash(addr=addr, length=size, filename=out,
+                                  parttype="user", display=True)
+        except Exception as e:
+            print(f"[-] {name} read failed: {e!r}")
+            return
+        res = ok[0] if isinstance(ok, tuple) else ok
+        if not res or not os.path.exists(out) or os.path.getsize(out) == 0:
+            print(f"[-] {name}: readflash failed — removing partial file")
+            try:
+                os.remove(out)
+            except OSError:
+                pass
+            return
+        m5 = md5_of(out)
+        manifest.append(f"{m5}  {name}.img  ({size} bytes)")
+        print(f"[+] {name}: {size} bytes md5 {m5}")
+
+    for name in CRITICAL_PARTS:
+        backup_part(name)
+
+    with open(os.path.join(bdir, "MANIFEST.md5"), "w") as f:
+        f.write("\n".join(manifest) + "\n")
+    print(f"[+] manifest: {bdir}/MANIFEST.md5")
+    print("[+] BACKUP DONE — copy this directory off-PC before any write "
+          "operation")
     return 0
 
 
