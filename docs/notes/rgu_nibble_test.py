@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""RGU nibble experiment v3 — РАБОЧИЙ метод записи в 0x10007024.
+"""RGU nibble experiment v3 — РАБОЧИЙ метод записи в 0x10007024 (CUSTOMREGW).
+Usage: rgu_nibble_test.py [--nibble N] [--check]
+  --nibble 2 = RECOVERY, 3 = FASTBOOT (default), 4 = FACTORY, 0 = clear.
 
 ПРИЧИНА БАГА v1 (proven, re-rgu-write.md §1): handler CMD:CUSTOMMEMW
 в payloads/da_xml.bin (Thumb @0x448) НЕ ИМЕЕТ инструкции записи — он читает
