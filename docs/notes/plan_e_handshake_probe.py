@@ -48,6 +48,14 @@ TOKENS = [
     ("FACTFACT", "?", True),
 ]
 
+# Send variants for the sync byte: the dispatcher reads sync + token with
+# separate reads (strlen/strncmp on a second buffer) — framing is NOT proven.
+# 'combo'  : one bulk-OUT write b"\xa0"+token
+# 'split'  : 0xA0 write, pause, token write
+# 'raw'    : token only
+# 'sync1'  : single byte 0xA0, wait for any non-READY reply, then token
+SEND_VARIANTS = ["combo", "split", "raw", "sync1"]
+
 LOG = []
 
 
@@ -167,8 +175,7 @@ def printable(b):
 
 
 def probe(token, mode, eps, dev_addr):
-    """mode: 'combo' (0xA0+token in one write), 'split' (0xA0, pause, token),
-    'raw' (token only)."""
+    """Send variants: combo / split / raw / sync1 (see SEND_VARIANTS)."""
     ep_out, ep_in, _ = eps
     log(f"=== probe token={token!r} mode={mode} ===")
     tok = token.encode()
@@ -181,6 +188,14 @@ def probe(token, mode, eps, dev_addr):
             ep_out.write(b"\xa0", timeout=2000)
             log("sent sync 0xA0")
             time.sleep(0.15)
+            ep_out.write(tok, timeout=2000)
+            log(f"sent token {len(tok)} B: {token}")
+        elif mode == "sync1":
+            ep_out.write(b"\xa0", timeout=2000)
+            log("sent single sync 0xA0 — listening for sync ack...")
+            ack = drain(ep_in, 2500, ignore_noise=True)
+            if ack:
+                log(f"[i] sync ack {len(ack)} B: {printable(ack)}")
             ep_out.write(tok, timeout=2000)
             log(f"sent token {len(tok)} B: {token}")
         else:  # raw
@@ -227,7 +242,7 @@ def one_cycle(only_token=None, order_mode=None):
         log("[i] device rebooted during passive listen — cycle ends, re-arm")
         return False
     tokens = [only_token] if only_token else [t for t, _, _ in TOKENS]
-    modes = list(order_mode) if order_mode else ["combo", "split", "raw"]
+    modes = list(order_mode) if order_mode else list(SEND_VARIANTS)
     results = {}
     for tok in tokens:
         for m in modes:
@@ -253,8 +268,8 @@ def main():
     ap.add_argument("--loop", action="store_true", help="keep re-arming and probing")
     ap.add_argument("--token", default=None, help="probe a single token")
     ap.add_argument("--only", action="store_true", help="with --token: no control probes")
-    ap.add_argument("--order", choices=["combo", "split", "raw"], default=None,
-                    help="force a single send mode (default: combo→split→raw)")
+    ap.add_argument("--order", choices=SEND_VARIANTS, action="append",
+                    help="force send mode(s), repeatable (default: all)"),
     ap.add_argument("--no-wait", action="store_true", help="device already in VCOM")
     a = ap.parse_args()
     if a.no_wait:
