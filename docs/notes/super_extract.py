@@ -192,11 +192,11 @@ def part_map(parts, exts, name):
 
 
 class Ext4:
-    def __init__(self, rd, off, size):
+    def __init__(self, rd, segs):
         self.rd = rd
-        self.off = off
-        self.size = size
-        sb = rd.read(off + 1024, 1024)
+        self.segs = segs
+        self.size = sum(x[1] for x in segs)
+        sb = self._read(1024, 1024)
         if struct.unpack_from("<H", sb, 0x38)[0] != EXT4_MAGIC:
             raise ValueError("not ext4")
         self.inodes_count, = struct.unpack_from("<I", sb, 0)
@@ -216,17 +216,35 @@ class Ext4:
               f"inodes={self.inodes_count} ipg={self.inodes_per_group} "
               f"desc={self.desc_size} incompat={self.feature_incompat:#x}")
 
+    def _read(self, off, length):
+        """Read inside the logical partition, mapping across LP extents."""
+        out = bytearray()
+        seg_start = 0
+        for (phys, size) in self.segs:
+            if off >= seg_start + size:
+                seg_start += size
+                continue
+            inner = off - seg_start
+            take = min(length - len(out), size - inner)
+            if take <= 0:
+                break
+            out += self.rd.read(phys + inner, take)
+            seg_start += size
+            if len(out) >= length:
+                break
+        return bytes(out)
+
     def _blk(self, n, count=1):
-        return self.rd.read(self.off + n * self.bs, count * self.bs)
+        return self._read(n * self.bs, count * self.bs)
 
     def inode(self, ino):
         grp = (ino - 1) // self.inodes_per_group
         idx = (ino - 1) % self.inodes_per_group
-        gd = self.rd.read(self.off + self.gd_off + grp * self.desc_size, self.desc_size)
+        gd = self._read(self.gd_off + grp * self.desc_size, self.desc_size)
         itab_lo, = struct.unpack_from("<I", gd, 8)
         itab_hi, = struct.unpack_from("<I", gd, 0x28) if self.desc_size >= 64 else (0,)
         itab = itab_lo | (itab_hi << 32)
-        raw = self.rd.read(self.off + itab * self.bs + idx * self.inode_size, self.inode_size)
+        raw = self._read(itab * self.bs + idx * self.inode_size, self.inode_size)
         mode, = struct.unpack_from("<H", raw, 0)
         size_lo, = struct.unpack_from("<I", raw, 4)
         size_hi, = struct.unpack_from("<I", raw, 0x6C)
@@ -301,7 +319,7 @@ def main():
     parser = mtk_cli.create_base_parser()
     parser = argparse.ArgumentParser(parents=[parser], description=mtk_cli.INFO)
     parser.add_argument('--super', default='super')
-    parser.add_argument('--part', default='system')
+    parser.add_argument('--part', default='system_a')
     parser.add_argument('--path', default='/bin/init')
     parser.add_argument('--out', default='')
     parser.add_argument('--list', action='store_true')
@@ -354,7 +372,7 @@ def main():
         return 1
     print(f"[*] {args.part}: {len(segs)} extent(s), first @ {segs[0][0]:#x} "
           f"({sum(s[1] for s in segs) / 1e9:.2f} GB)")
-    fs = Ext4(rd, segs[0][0], segs[0][1])
+    fs = Ext4(rd, segs)
 
     if args.list:
         ino = fs.lookup(args.path)
