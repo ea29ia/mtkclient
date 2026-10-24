@@ -1,5 +1,11 @@
 # RE: SEC service dispatch in RMX3630 OPLUS DA2 (question 4)
 
+> **ERRATA (2026-10-24, audit #2):** (1) policy bit **2** is `hash_binding`
+> (`ubfx #2` @0x4002CDF4), not bit 1. (2) A policy-table miss returns the
+> **default entry** (0x4002CCD0), not −1. (3) `g_oplus_auth_status` is at
+> **0x4005455C**; 0x40054314 is an XML-error string pointer.
+> See `re-consistency-audit-2.md` §3.
+
 Date: 2026-10-23. Tool: radare2, `-a arm -b 32 -m 0x40000000`, file offset 0 == VA 0x40000000.
 Binary: `docs/notes/rmx3630-da2/da2_oplus.bin` (356296 B, sha256 fd3a5038…).
 

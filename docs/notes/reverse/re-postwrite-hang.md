@@ -1,5 +1,9 @@
 # Re: post-WRITE hang / EIO after full WRITE-PARTITION to seccfg
 
+> **ERRATA (2026-10-24, audit #2):** 0x4000EA94 is a **recursive tree free**
+> (`bl 0x4000A5F0` @0x4000EB4C, mxmlDelete), not a "send response" or
+> "send error status" helper. See `re-consistency-audit-2.md` §3 (P5).
+
 Reverse-engineering answer to open question #1 of
 `docs/notes/rmx3630-da2/README.md`. Blob: `docs/notes/rmx3630-da2/da2_oplus.bin`
 (file offset 0 == VA 0x40000000, ARM32, analyzed with radare2).

@@ -1,5 +1,13 @@
 # RE: WRITE-PARTITION — consumer wakeup: точные структуры, событийная таблица, разрешение парадокса «успех без записи»
 
+> **ERRATA (2026-10-24, audit #2):** (1) at 0x4002F858 `r1 = policy[+2]`
+> (`img_auth_required`, 0/1) — the F5 patch *deletes* `mov r1,sl`; the marker is
+> 0/1, never a length. (2) The "bulk handle 0x4006E790 all zero ⇒ 0x4002D5A8 not
+> called" argument is unreliable (the slot is reused by the read engine; init
+> stores [h+0x34] unconditionally at 0x4002D608). (3) The loop exit is
+> `accumulated == target` only. Do **not** enable the F5 patch in real runs.
+> See `re-consistency-audit-2.md` §3.
+
 Дата: 2026-10-24. Бинарь: `/home/musin/firmware/extracted/IMAGES/da2_oplus.bin`
 (356296 B, ARM32, VA = file offset + 0x40000000). Инструмент: capstone (ARM) из
 `/home/musin/mtkclient/.venv` (`/tmp/opencode/disasm.py`). Контекст:

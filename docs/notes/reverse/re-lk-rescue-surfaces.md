@@ -1,5 +1,12 @@
 # RE: LK "rescue surfaces" on RMX3630 (MT6789) — fastboot dispatcher, META/factory entry, misc/BCB, recovery fallback
 
+> **ERRATA (2026-10-24, audit #2):** the ATAG claim "1/7 → fastboot" is wrong
+> (1 → META, 7 → UNKNOWN banner; fastboot is 0x63 only, via HW nibble 3 or
+> rc_wdt-class+lock==3). The `oem cdms` row is correct except that 0x500AC36E is
+> the "[FASTBOOT] Start reset dm-verity status" string, not the name. The LK
+> boot-info mirror is at RPMB blocks **0x1DC–0x1DF**, not 0–3.
+> See `re-consistency-audit-2.md`.
+
 Date: 2026-10-23. Target: `docs/notes/rmx3630-lk/lk.img`, payload `lk` (file off 0x200,
 size 0xE4600). VA = payload_offset + 0x50000000 (per `re-lk-seccfg.md`; all addresses
 below are real VAs). Method: r2 (`-a arm -b 64 -m 0x50000000`) + a custom ADRP/ADD/BL

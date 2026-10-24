@@ -1,5 +1,15 @@
 # RE: OPLUS DA2 (RMX3630, `da2_oplus.bin`) — where does the RPMB HMAC auth key come from?
 
+> **ERRATA (2026-10-24, audit #2):** (1) `rpmb_ufs_set_wp/clr_wp`,
+> `ufs_rpmb_pre_nonce` and `rpmb_authen_read_counter` are **live** (xrefs
+> 0x400263FC/0x400264C4, 0x40026E30/84, 0x40025D60/0x40025F14), not dead.
+> (2) "op 3 auth-write proves key match" is an inference — `ufs_clr_write_protect`
+> aborts on op-1 errors and only logs later ones. (3) The DA's
+> `custom_rpmb_read/write` patched stub resolves to `mmc_rpmb_send_command`
+> = MSDC/eMMC path (0x4001831C), so it does not reach UFS RPMB.
+> (4) `GET-RPMB-KEY-STATUS` on UFS issues code 0x30 and only 0x10 means EXIST —
+> the printed `NOT-EXIST` is a weak signal. See `re-consistency-audit-2.md` §1.
+
 Date: 2026-10-23. Target: `docs/notes/rmx3630-da2/da2_oplus.bin` (356296 B, **entirely
 ARM32 despite the README's Thumb warning** — all "push {…}" prologues decode as ARM
 `STMFD`; load base 0x40000000, file off == VA - 0x40000000).

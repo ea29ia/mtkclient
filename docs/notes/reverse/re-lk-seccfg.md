@@ -1,5 +1,15 @@
 # RE: LK seccfg validation on RMX3630 (MT6789) — does LK duplicate the DA2 checks?
 
+> **ERRATA (2026-10-24, audit #2):** (1) the "backup valid → self-heal" branch
+> hashes **R_main** (0x50144840) and compares it with the digest at
+> **R_bak+0x1C** (0x5014489C) — a corrupted main magic cannot reach it; the flow
+> falls to init-NV (lock=1). (2) `sec_cfg_get_lock_state` fails safe to
+> ***out = 1*** (`csinc w8,w8,wzr,eq` @0x50082B0C), not 0. (3) digest error codes
+> are **0x10003005** (magic) / **0x10003001** (hash). (4) HACC register roles:
+> AKEY = +0x18..+0x34 (zeroed), seeds +0x38..+0x44, data +0x08..+0x14
+> (`re-seccfg-digest-equiv.md` is correct). (5) The RPMB mirror is at blocks
+> **0x1DC–0x1DF**. See `re-consistency-audit-2.md` §2.
+
 Date: 2026-10-23. Tool: radare2 (`-a arm -b 64 -m 0x50000000`). Target:
 `docs/notes/rmx3630-lk/lk.img` (2,884,672 B). Companion notes:
 `rmx3630-da2/README.md`, `re-reserve2-master.md`, `re-sec-dispatch.md`

@@ -1,5 +1,20 @@
 # RE: LK boot-mode selection на RMX3630 (MT6789) — приоритеты источников, fastboot-вход, misc BCB, BCAB
 
+> **ERRATA (2026-10-24, audit #2)** — this document is **systematically wrong**:
+> every *code* VA is **+0x78** too high (entry 0x5000AB24 → real **0x5000AAAC**,
+> caller 0x5000E1D4 → **0x5000E15C**, BCB read 0x50069C88 → **0x50069C10**,
+> misc open 0x50069BFC → **0x50069B84**, malloc 0x5006AD00 → **0x5006AC88**,
+> strcmp 0x5006CD64 → **0x5006CCEC**, HW getter 0x500405B0 → **0x50040538**,
+> oplusreserve 0x50005458 → **0x500053E0**, kpoc 0x5001F078 → **0x5001F000**).
+> Semantic errors: ATAG 1 → mode **1 (META)**, ATAG 7 → mode **7 (banner
+> "UNKNOWN BOOT")** — neither is fastboot; only **0x63** is FASTBOOT
+> (HW nibble 3 at 0x5000ACA4, or rc_wdt-class && lock==3 at 0x5000ACBC→0x5000AD04).
+> rc_wdt + locked → **RECOVERY** (mode 2), not META. HW nibble 0xB → **stores 0xB**.
+> BCB compare is `strcmp` (NUL required at misc[13]). BCAB is read **0x20 B at
+> offset 0x800** (not 0x800 B at 0) and **0x80C = BCAB+0xC is a live field** that
+> LK itself rewrites with 0x77 — "safe to edit" is wrong.
+> See `re-consistency-audit-2.md` §C6/§C7. **Regenerate, do not patch.**
+
 Date: 2026-10-24. Target: `docs/notes/rmx3630-lk/lk.img`, payload `lk` (file off 0x200,
 size 0xE4600). VA = payload_offset + 0x50000000 (маппинг тот же, что в
 `re-lk-seccfg.md` / `re-lk-rescue-surfaces.md`; все адреса — реальные VA).

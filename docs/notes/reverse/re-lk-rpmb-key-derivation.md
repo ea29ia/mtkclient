@@ -1,5 +1,12 @@
 # RE: RPMB auth-key provisioning/derivation on MT6789 (RMX3630) — LK + preloader
 
+> **ERRATA (2026-10-24, audit #2):** (1) the LK mirror is at RPMB blocks
+> **0x1DC–0x1DF** (0x1DC is the frame address field), not at 0–3. (2) The RPMB
+> device-name string at 0x500A06BD is `preloader_a`; `mmc0rpmb` is 0x500A06D5.
+> (3) "MAC computed in GZ/TEE" is superseded by `re-gz-rpmb-derivation.md`
+> (ATF/EL3, SMC 0xC2000414); t-base SFSRP uses a separate TLAPI driver channel.
+> See `re-consistency-audit-2.md` §L13.
+
 Date: 2026-10-23. Companion: `re-lk-rpmb-lock.md` (read fully; this file extends §4/§5 of it).
 Targets: LK payload (`lk.img`, off 0x200, VA = off + 0x50000000, AArch64),
 `preloader_k6789v1_64.bin` (ARM32/Thumb, position-independent — load base **not

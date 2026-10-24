@@ -1,5 +1,13 @@
 # RE: tee.img (Trustonic MTEE) RPMB ownership + efuse map (efuse.xml / Efuse.ini / efuse.img)
 
+> **ERRATA (2026-10-24, audit #2):** (1) the tee load base **is resolved**:
+> 0x05F00000 (`tee.img` body at 0x31660+0x440; the 0x05F00240 qword sits at
+> segment-header +0x28) — `re-tbase-sfsrp.md` is right. (2) The LK boot-info
+> mirror is at RPMB blocks **0x1DC–0x1DF**, not 0–3 — the "SFSRP must start at
+> S≥4" reasoning is therefore void. (3) "TEE performs its own keyed RPMB" stays
+> unresolved: no HMAC in the tee segment; the key may live in EL3/an external
+> TLAPI driver. See `re-consistency-audit-2.md`.
+
 Date: 2026-10-23. Targets: `docs/notes/rmx3630-lk/tee.img` (768816 B),
 `/root/firmware/IMAGES/{efuse.xml,Efuse.ini,efuse.img}` (efuse.img/Efuse.ini
 extracted from `RMX3630export_11_14.0.0.200EX01_2024090223460108.zip`).

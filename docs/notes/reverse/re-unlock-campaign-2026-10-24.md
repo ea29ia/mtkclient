@@ -1,6 +1,11 @@
 # RE / campaign report: RMX3630 (MT6789) — unlock write works, unlock does NOT survive reboot
 
-Date: 2026-10-24. Branch `oplus-mt6789-unlock` (commits up to `1b2ae55`).
+Date: 2026-10-24. Branch `oplus-mt6789-unlock` (report + probes committed in
+`04db714`/`4aa8956`).
+
+> **Amended after consistency audit #2** (`re-consistency-audit-2.md`): the RPMB
+> mirror is at blocks **0x1DC–0x1DF**, not 0–3 (§2.2/§2.3); ATAG does not
+> produce fastboot (§2.3); `misc` is not zero (§8).
 Companions: `re-lk-rpmb-lock.md`, `re-lk-seccfg.md`, `re-tbase-sfsrp.md`,
 `re-lk-bootmode-priority.md`, `re-f804-rootcause.md`, `re-mtkclient-rpmb-audit.md`,
 `re-da2-rpmb-key.md`.
@@ -43,10 +48,12 @@ Status legend: **[proven]** = disassembly / device bytes / log evidence,
    SFSRP uses the same device RPMB key. So the DA's `CUSTOMRPMBR/W` path
    (patched `mmc_rpmb_send_command`, eMMC flavour) does not reach the real UFS
    RPMB. [observed + proven]
-7. **fastboot is unreachable from the DA side.** LK enters FASTBOOT only when
-   the preloader-owned HW boot-nibble (`0x50040538` → `0x10007024 & 0xF`) is 3,
-   or the preloader ATAG is 1/7. `SET-BOOT-MODE=FASTBOOT` is accepted by DA2 but
-   the device re-enumerates `0006 → 2046` (Android). [proven code + observed]
+7. **fastboot is unreachable from the DA side in the tested configuration.**
+   Mode `0x63` has exactly two entry paths (§2.3): the preloader-owned HW
+   boot-nibble (`0x10007024 & 0xF == 3`) and the `rc_wdt-class && lock_state==3`
+   branch. **ATAG values 1/4/7 produce modes 1/4/7 (META/factory/UNKNOWN), not
+   fastboot.** `SET-BOOT-MODE=FASTBOOT` is accepted by DA2 but the device
+   re-enumerates `0006 → 2046` (Android). [proven code + observed]
 8. **Device state at the end of the campaign: alive, boots Android normally,
    `seccfg` = original (lock=4), USB `22d9:2046` exposes only Audio/MIDI
    interfaces → no ADB, no MTP.** `adb devices` empty. [observed]
@@ -99,7 +106,7 @@ Status legend: **[proven]** = disassembly / device bytes / log evidence,
 | 0x500026E4 | `set_boot_info_to_rpmb` (0x50054744) call site (every boot) |
 | 0x500078E8 | `set_boot_info_to_rpmb(1,1)` call site (fastboot unlock commit) |
 | 0x50054674 | `km_client_read_rpmb_boot_info(buf)` |
-| 0x50055570 | read helper: `w0=0x1DC` (**TEE op id**), `x1=buf`, `w2=0x400`; dev 2 → 0x5003E4E4 (TEE) with one retry, dev 1 → 0x5002FD14 |
+| 0x50055570 | read helper: `w0=0x1DC` (**RPMB block address**, not an op id), `x1=buf`, `w2=0x400`; dev 2 → 0x5003E4E4 (TEE) with one retry, dev 1 → 0x5002FD14 |
 | 0x50055508 | `SHA-256(buf, 0x3E0, out)` (software SHA-256 core 0x5008B4DC) |
 | 0x50055364 | memcmp(0x20) |
 | 0x50055368 | memset (0x400) — **hash mismatch zeroes the buffer and returns success** |
@@ -111,24 +118,39 @@ Consequences:
 
 * A corrupted/unreadable mirror block means `mirror = 0` ⇒ **no re-lock, unlock
   survives** (and LK then rewrites the mirror as unlocked). [proven]
-* `0x1DC` is an op id, not a sector: the mirror is RPMB **sectors 0–3**
-  (`0x400` B at offset 0), as documented in `re-mtkclient-rpmb-audit.md` §6.
+* `0x1DC` is the **JEDEC address field** of the RPMB frame: inside
+  `rpmb_read_direct` (0x5002FD14) the argument is stored at `frame+0x1F8`
+  (`rev w10,w22; lsr #16; strh w10,[sp,#0x228]`, frame base `sp+0x30`) and the
+  request type `0x400` at `frame+0x1FE`. So the mirror is RPMB **blocks
+  0x1DC–0x1DF**, i.e. 0x400 bytes at byte offset **0x1DC00** — *not* 0–3.
+  (Corrected after audit #2; the "sectors 0–3" claim was wrong.)
 
 ### 2.3 `fastboot` entry (verified in disassembly)
 
 ```
-0x5000AC80  bl 0x5000B1E8          ; reboot-reason class; tbz w0,#0 -> skip lock gate
+0x5000AC80  bl 0x5000B1E8          ; reset-reason class; tbz w0,#0 -> skip lock gate
 0x5000AC94  bl 0x500326AC          ; seccfg lock_state getter
 0x5000AC9C  cmp w8,#3
-0x5000ACA0  b.ne 0x5000ADD4        ; locked -> other branch
+0x5000ACA0  b.ne 0x5000ADD4        ; not unlocked -> recovery branch
 0x5000ACA4  bl 0x50040538          ; HW boot nibble (0x10007024 & 0xF, cached)
 0x5000ACAC  cmp w8,#3
-0x5000ACB0  b.ne 0x5000ACBC        ; !=3 -> no fastboot
-0x5000ACB4  mov w8,#0x63           ; FASTBOOT
+0x5000ACB0  b.ne 0x5000ACBC        ; !=3 -> try path (b)
+0x5000ACB4  mov w8,#0x63           ; FASTBOOT  (path a)
+
+0x5000ACBC  bl 0x5000B1E8          ; path (b): reset-reason class
+0x5000ACC0  tbz w0,#0, 0x5000AD08  ; not that class -> boot-reason table
+0x5000ACD0  bl 0x500326AC          ; lock_state
+0x5000ACD8  cmp w8,#3
+0x5000ACDC  b.ne 0x5000AD08
+0x5000ACE0  mov w0,#0xC ; bl 0x50021D2C ; print "fastboot_check gpio condition is %d"
+0x5000AD04  b 0x5000ACB4           ; -> 0x63 regardless of the GPIO value
 ```
-**Correction to `re-lk-bootmode-priority.md`:** the "fastboot_check GPIO
-unconditionally jumps to 0x63" statement is wrong — the gate is the HW nibble.
-The nibble is written by the preloader, so it cannot be produced from DA/flash.
+So there are **two** paths to FASTBOOT: (a) preloader HW nibble == 3, (b)
+reset-reason class of `0x5000B1E8` **and** `seccfg==3` (GPIO only logged).
+ATAG boottags are `1 -> mode 1 (META)`, `4 -> mode 4 (factory)`,
+`7 -> mode 7 (banner "UNKNOWN BOOT")`; `0x63` is never produced from ATAG.
+Our WDT reboot with `seccfg==3` did **not** reach fastboot, so path (b)'s first
+condition was false for that reset — an open question (§5 Q5).
 
 ---
 
@@ -146,10 +168,10 @@ The nibble is written by the preloader, so it cannot be produced from DA/flash.
 Branch that produced this (inferred, matches all observations):
 
 ```
-boot_mode_check: seccfg==3 but HW nibble!=3, rc_wdt class -> no fastboot -> NORMAL
+boot_mode_check: nibble!=3, reset-reason class false -> NORMAL
 sec_boot_init:
     lock_state()==3            -> run double_check_lock_state
-    RPMB read OK (TEE 0x1DC)   -> mirror(+0xC) == 1  (written by the previous locked boot)
+    RPMB read of blocks 0x1DC..0x1DF succeeds -> mirror(+0xC) == 1 (written by the previous locked boot)
     [DC-2] sec_cfg_set_lock_state(locked)  -> header re-signed (deterministic HACC)
            power-off  -> the extra USB re-enumerations
 next boot: lock_state==4 -> DC skipped -> normal boot
@@ -227,7 +249,7 @@ behaviour and keep full `boot_a` + `vbmeta_a` backups (recoverable via DA).
 | `para_write_test.py` / `para_restore_zero.py` | yes | write-path proof / cleanup |
 | `reboot_fastboot.py` | no (reboot) | DA `SET-BOOT-MODE=FASTBOOT` + reboot |
 | **`write_reach_test.py`** | yes (`WRITE_REACH_GO=1`) | **Q1**: does the write reach the partition tail? (with restore) |
-| **`rpmb_mirror_probe.py`** | no | **Q3**: mirrors sectors 0–3 with correct vs. wrong key, raw key-status |
+| **`rpmb_mirror_probe.py`** | no | **Q3**: mirror blocks **0x1DC–0x1DF** with correct vs. wrong key, raw key-status |
 
 Environment for every run (as in `run_boot_diag.sh`): `OPLUS_PATCH_LEVEL=5`,
 `OPLUS_SBC_PATCH=0`, `OPLUS_STORAGE=ufs`, `OPLUS_WRITE_BYPASS=1`,
@@ -255,8 +277,11 @@ Fresh CWD (no `.state`, no `hwparam.json`) before each attempt.
 * **Proven:** all LK addresses/paths in §2.2–2.3 (capstone on `lk_payload.bin`),
   write path and `para`/`seccfg` commits, the 0x200 marker and repo-wide absence
   of a second seccfg copy in dumped partitions, MIDI-only USB descriptor.
-* **Observed:** the revert, the boot loop of USB re-enumerations, `expdb` = 0,
-  `misc` = 0, DA RPMB reads all zero and key-gate-free.
+* **Observed:** the revert, the USB re-enumerations, `expdb` = 0 (4 MB, OPPO does
+  not log LK there), DA RPMB reads all zero. `misc` is **not** zero: it carries a
+  BCAB control block at +0x800 (`5f 61 00 00 42 43 41 42 01 02 00 00 ff 00 7f 00 …`,
+  14 nonzero bytes), and 6 bytes of it changed during the session — LK rewrote
+  the BCAB (checksum + slot fields).
 * **Inferred:** DC-2 as the re-lock mechanism (code + behaviour agree, but
   `expdb` does not carry the LK log to prove it on-device); the full-partition
   restore question is explicitly left open.

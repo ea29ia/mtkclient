@@ -1,5 +1,11 @@
 # RE: downstream-консьюмеры boot-mode слотов в preloader, ATAG-строение (RMX3630 / MT6789)
 
+> **ERRATA (2026-10-24, audit #2):** the claim "no `str` into 0x10007024 exists
+> in the preloader" is **out of scope**: `re-rgu-nibble-loss.md` documents
+> `bic r1,#0xf; str r1,[...]` @0x23DFB0 (clear path 0x23DFAC, caller 0x228624).
+> Also: ATAG 1 → META (not fastboot); fastboot requires nibble 3. See
+> `re-consistency-audit-2.md` §C6.
+
 Date: 2026-10-24. Target: `IMAGES/preloader_k6789v1_64.bin` (390868 B, ARM32/Thumb, PIC).
 Маппинг **VA = file_offset + 0x200F10** (proven, см. re-preloader-daa-lk.md).
 Метод: линейный sweep capstone по всему бинарнику с резолвом pc-relative LDR → литерал → значение

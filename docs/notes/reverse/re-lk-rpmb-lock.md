@@ -1,5 +1,16 @@
 # RE: LK RPMB lock mirror on RMX3630 (MT6789) — double_check_lock_state, its writer, and the DA2 path to a persistent unlock
 
+> **ERRATA (2026-10-24, audit #2):** (1) `0x1DC` is the **RPMB block address**
+> (frame+0x1F8), not an op id — the mirror is blocks **0x1DC–0x1DF** (0x400 B at
+> byte offset 0x1DC00), proven at 0x5002FE78-88 (direct) / 0x5003E5C4-5DC (TEE).
+> (2) TEE retry delay is **0x7A120 µs = 500 ms**, not "0xA120 ms". (3) Mirror
+> block fields: +0x4 sbc, **+0x8 boot_mode**, **+0xC locked**, +0x10 aux; +0x0
+> stays 0 (0x50054814/0x50054818). (4) The power-off string is at **0x500AD0EF**.
+> (5) `0x50055368` is a memset (0x400) used by the hash-mismatch path; the
+> "get sha256 fail" branch after `0x50055508` is dead (that call *is* SHA-256).
+> (6) `mmc0rpmb` is at 0x500A06D5; 0x500A06BD is `preloader_a`.
+> See `re-consistency-audit-2.md` §1/§2.
+
 Date: 2026-10-23. Target: `docs/notes/rmx3630-lk/lk.img` payload (`lk`, file off 0x200,
 size 0xE4600). Method: `dd` payload → `lk_payload.bin`, analyzed with
 `r2 -a arm -b 64 -m 0x50000000` (VA = payload offset + 0x50000000, per

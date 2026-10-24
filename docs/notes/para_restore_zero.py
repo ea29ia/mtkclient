@@ -1,11 +1,33 @@
 #!/usr/bin/env python3
-"""Restore `para` first 0x1000 to zeros after the write-verification probe.
-Reads the full partition, replaces the first 0x1000 with the original zeros,
-writes the full image back, verifies. Safe: pre_erase=NO, same size.
+"""Restore `para` to its pre-probe content, entirely from a saved image.
+
+Reads the full partition, then writes back `/tmp/para_orig_full.bin` (created by
+para_write_test.py / write_reach_test.py) or, if absent, an all-zero image with
+the same size. The ORIGINAL head is never taken from the current probe state
+(that was the bug in the first version: it saved the probe content and then
+"restored" it).
+
+Safe: WRITE-PARTITION with pre_erase=NO, same size. Read-only unless
+PARA_RESTORE_GO=1.
 """
-import os, sys, time
+import hashlib
+import os
+import sys
+import time
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+GO = os.environ.get("PARA_RESTORE_GO", "1") == "1"   # restore is the safe default
+CANDIDATES = ("/tmp/para_orig_full.bin", "/home/musin/para_reach_before.bin")
+
+
+def rd(loader, base, length):
+    d = loader.readflash(addr=base, length=length, filename="", parttype="user", display=False)
+    d = d[0] if isinstance(d, tuple) else d
+    if not d or isinstance(d, bool):
+        return b""
+    return bytes(d[:length])
 
 
 def main():
@@ -19,37 +41,63 @@ def main():
     from mtkclient.Library.mtk_main import Main
     mtk = Main(args).run(parser)
     if mtk is None:
-        print("[-] connect failed"); return 1
+        print("[-] connect failed")
+        return 1
     loader = mtk.daloader
     xmlft = loader.xmlft
+
     _, gpt = loader.get_gpt(parttype="user")
     ss = gpt.sectorsize
     para = next((p for p in gpt.partentries if p.name.lower() == "para"), None)
-    base, fullsize = para.sector * ss, para.sectors * ss
-    print(f"[*] para base={base:#x} size={fullsize:#x}")
+    if para is None:
+        print("[-] no para in GPT")
+        return 1
+    base, full = para.sector * ss, para.sectors * ss
+    print(f"[*] para base={base:#x} size={full:#x}")
 
-    data = loader.readflash(addr=base, length=fullsize, filename="", parttype="user", display=False)
-    data = data[0] if isinstance(data, tuple) else data
-    if not data or isinstance(data, bool) or len(data) < fullsize:
-        print("[-] full read failed"); return 1
-    data = bytes(data[:fullsize])
-    print(f"[*] current head: {data[:16].hex()}")
-    open("/tmp/para_before_restore.bin", "wb").write(data)
+    cur = rd(loader, base, full)
+    if len(cur) != full:
+        print("[-] full read failed")
+        return 1
+    open("/tmp/para_at_restore.bin", "wb").write(cur)
+    print(f"[*] current: md5={hashlib.md5(cur).hexdigest()} head={cur[:16].hex()}")
 
-    restored = bytes(0x1000) + data[0x1000:]
-    print("[!] writing zeros over first 0x1000 ...")
-    time.sleep(2)
-    ok, msg = xmlft.seccfg_write_partition(para, restored)
-    print(f"[*] write: {ok!r} {msg!r}")
+    target = None
+    for cand in CANDIDATES:
+        try:
+            blob = open(cand, "rb").read()
+        except OSError:
+            continue
+        if len(blob) == full:
+            target, src = bytes(blob), cand
+            break
+        if len(blob) >= 0x1000:
+            # only the head is available: keep the current tail
+            target, src = bytes(blob[:0x1000]) + cur[0x1000:], cand + " (head only)"
+            break
+    if target is None:
+        print("[!] no saved image found — falling back to an all-zero image")
+        target, src = bytes(full), "zeros"
+    print(f"[*] restore source: {src} (md5 {hashlib.md5(target).hexdigest()})")
+    print(f"[*] restore head: {target[:16].hex()}")
 
-    time.sleep(1)
-    rb = loader.readflash(addr=base, length=0x1000, filename="", parttype="user", display=False)
-    rb = rb[0] if isinstance(rb, tuple) else rb
-    rb = bytes(rb[:0x1000]) if rb and not isinstance(rb, bool) else b""
-    if rb == bytes(0x1000):
-        print("[+] para RESTORED (first 0x1000 zeros)")
+    if target == cur:
+        print("[+] already at target — nothing to write")
         return 0
-    print(f"[-] restore mismatch: {rb[:16].hex()}")
+    if not GO:
+        print("[dryrun] rerun with PARA_RESTORE_GO=1")
+        return 0
+
+    time.sleep(1.0)
+    ok, msg = xmlft.seccfg_write_partition(para, target)
+    print(f"[*] write: {ok!r} {msg!r}")
+    time.sleep(1.0)
+    rb = rd(loader, base, full)
+    if rb == target:
+        print(f"[+] para RESTORED (md5 {hashlib.md5(rb).hexdigest()})")
+        return 0
+    print(f"[!] restore MISMATCH: head={rb[:16].hex()} md5={hashlib.md5(rb).hexdigest()}"
+          " — do NOT reboot, retry")
     return 1
 
 

@@ -1,5 +1,12 @@
 # RE: WRITE-PARTITION (0x40002034) — куда уходят данные и почему misc пострадал по offset 0x80C/0x818
 
+> **ERRATA (2026-10-24, audit #2):** (1) `pre_erase=NO` **is sent** on every
+> WRITE-PARTITION (xml_cmd.py:453) — the erase is skipped by the flag, not by a
+> missing node. (2) Only the **received** byte count is programmed at offset 0
+> (`len = [rec+0xC]+[rec+0x10]`, exit on `accumulated == target`); "the whole
+> partition is written" holds only when payload size == partition size.
+> (3) 0x4002AAC0 is dead code; slot is +8. See `re-consistency-audit-2.md` §C4.
+
 Бинарник: `/home/musin/firmware/extracted/IMAGES/da2_oplus.bin` (356296 B), ARM32.
 **Маппинг подтверждён (proven):** file offset 0 == VA 0x40000000. Проверка: file offset 0x2034
 дизассемблируется как `push {r4-r8,sb,sl,fp,lr}; add fp,sp,#0x1c; sub sp,#0x32c` — корректный

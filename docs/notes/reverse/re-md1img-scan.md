@@ -1,5 +1,9 @@
 # re-md1img-scan — RPMB / seccfg dependency scan of md1img.img (MT6789 modem, fw 14.0.0.200EX01)
 
+> **ERRATA (2026-10-24, audit #2):** the "planned mirror rewrite" is invalid —
+> the mirror is at RPMB blocks 0x1DC–0x1DF and the DA RPMB path is eMMC-only;
+> the forged seccfg did not survive the reboot. See `re-unlock-campaign-2026-10-24.md`.
+
 **Date:** 2026-10-23 · **Target:** `/root/firmware/IMAGES/md1img.img` (55623168 bytes) · **Method:** strings-level only, bounded scan.
 
 ## 1. Keyword hit matrix

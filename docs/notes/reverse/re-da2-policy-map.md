@@ -1,5 +1,10 @@
 # RE: complete per-partition security-policy map, RMX3630 OPLUS DA2 (`da2_oplus.bin`)
 
+> **ERRATA (2026-10-24, audit #2):** 0x4002F804 is the per-chunk **write
+> dispatcher**, not an "image hash-list check" — stubbing it turned every write
+> into a silent no-op (`re-f804-rootcause.md`). Q1/Q3/Q5 remain valid.
+> See `re-consistency-audit-2.md` §3 (P1).
+
 Date: 2026-10-24. Tool: radare2 (`-a arm -b 32 -m 0x40000000`, file offset 0 == VA).
 Binary: `docs/notes/rmx3630-da2/da2_oplus.bin`, 356296 B = **0x56FC8** bytes
 (sha256 `fd3a5038…`). Anything at VA ≥ 0x40056FC8 is **.bss** (zero at boot) — this

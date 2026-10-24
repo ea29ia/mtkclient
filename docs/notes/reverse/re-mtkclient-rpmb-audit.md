@@ -131,16 +131,18 @@ wired into the DA flow).
   "offset/0x100 bytes" (`mtk.py:285`); `CUSTOMRPMBR/W` take `sector` as a u32
   sector index; each read/write unit is 0x100 bytes of data. Sector 0 = byte offset 0
   of the RPMB region.
-* The LK boot-info mirror is a **0x400-byte** structure read/written in one TEE
-  request (op 0x1DC) — that is RPMB data sectors **0..3** (byte offsets 0x000–0x3FF).
-  `km_client_read_rpmb_boot_info` reads 0x400 bytes at the base of the RPMB area
-  (offset 0; fields: +0x0, +0x4, +0x8 last_bootmode, **+0xC locked bit (1=locked)**,
-  +0x10 aux, SHA-256 over [0x0,0x3E0) stored at +0x3E0 — `re-lk-rpmb-lock.md` §1, §4).
-  So on the host: `da rpmb r --sector 0 --sectors 4` captures the mirror;
-  `da rpmb w --sector 0 --sectors 4` with a 0x400-byte image (field +0xC = 0,
-  SHA-256(buf[0:0x3E0]) at +0x3E0) rewrites it. No comment in mtkclient pins the
-  mirror to sector 0 explicitly — the offset-0 mapping comes from the LK RE
-  (`re-lk-rpmb-lock.md` §1/§4), not from mtkclient code.
+* The LK boot-info mirror is a **0x400-byte** structure read/written in one call
+  whose first argument is the **RPMB block address `0x1DC`** (JEDEC frame field
+  `frame+0x1F8`), with 4 blocks (`frame+0x1FE` = request type). It therefore lives
+  at RPMB **blocks 0x1DC–0x1DF** = byte offset **0x1DC00–0x1DFFF**, NOT at 0.
+  (Corrected 2026-10-24: `0x1DC` was previously mis-read as a TEE op id. Proof:
+  `rpmb_read_direct` 0x5002FD14 stores `rev(w0)>>16` at `[sp,#0x228]` with frame
+  base `sp+0x30`; the TEE path 0x5003E4E4 does the same at 0x5003E5C4.)
+  Block fields: +0x4 sbc, **+0x8 last_bootmode**, **+0xC locked bit (1=locked)**,
+  +0x10 aux, plain SHA-256 over [0x0,0x3E0) stored at +0x3E0
+  (`re-lk-rpmb-lock.md` §4; field map corrected there).
+  On the host: `da rpmb r --sector 0x1DC --sectors 4` captures the mirror
+  (if the DA RPMB path worked on UFS at all — it does not, see §7a).
 
 ## 7. Device runbook (RMX3630, DA2 after heapbait + OPLUS table-unlock patches)
 

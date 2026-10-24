@@ -1,22 +1,36 @@
 #!/usr/bin/env python3
-"""Discrimination test (jaq follow-up): does the WRITE-PARTITION program
-phase commit AT ALL on this DA2?
+"""Write-path proof on the unprotected `para` partition (first 0x1000 bytes).
 
-Test: write a 0x1000-byte distinctive pattern to the UNPROTECTED `para`
-partition (first 0x1000 bytes only), read back, restore original.
-- para commits  -> program engine works; seccfg is silently protected
-                   (deeper OPLUS write-intercept) -> find the intercept.
-- para no-write -> program phase never commits for any partition (flush/
-                   commit broken with our session style) -> investigate
-                   engine/commit path (0x400306ac -> 0x40008234 stub etc).
+Writes a distinctive 0x1000-byte pattern over the first block, keeps the REST of
+the partition byte-identical (full-partition read + rewrite), reads the head
+back, and restores the original image from the saved copy.
+
+History: the original version compared a 0x1000 read against a 1024-byte
+pattern (`(b"PARATEST"*128)[:0x1000]`), so its success branch was unreachable —
+the real proof was the printed hex. Fixed per audit #2.
 
 Read-only unless PARA_GO=1.
 """
-import os, sys, struct, time
+import hashlib
+import os
+import sys
+import time
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 GO = os.environ.get("PARA_GO", "0") == "1"
+ORIG_FULL = "/tmp/para_orig_full.bin"
+PATTERN = (b"PARATEST" * 0x200)[:0x1000]
+assert len(PATTERN) == 0x1000
+
+
+def rd(loader, base, length):
+    d = loader.readflash(addr=base, length=length, filename="", parttype="user", display=False)
+    d = d[0] if isinstance(d, tuple) else d
+    if not d or isinstance(d, bool):
+        return b""
+    return bytes(d[:length])
 
 
 def main():
@@ -28,73 +42,75 @@ def main():
     sub.add_parser('custom')
     args = parser.parse_args(sys.argv[1:] + ['custom'])
     from mtkclient.Library.mtk_main import Main
-    mtk_main = Main(args)
-    mtk = mtk_main.run(parser)
+    mtk = Main(args).run(parser)
     if mtk is None:
-        print("[-] connect failed"); return 1
+        print("[-] connect failed")
+        return 1
     loader = mtk.daloader
     xmlft = loader.xmlft
 
-    data, gpt = loader.get_gpt(parttype="user")
+    _, gpt = loader.get_gpt(parttype="user")
     ss = gpt.sectorsize
     para = next((p for p in gpt.partentries if p.name.lower() == "para"), None)
     if para is None:
-        print("[-] no para in GPT"); return 1
-    base = para.sector * ss
-    print(f"[+] para: LBA {para.sector:#x} base {base:#x} (block-aligned: {base % 0x1000 == 0})")
+        print("[-] no para in GPT")
+        return 1
+    base, full = para.sector * ss, para.sectors * ss
+    print(f"[+] para: LBA {para.sector:#x} base {base:#x} size {full:#x}")
 
-    orig = loader.readflash(addr=base, length=0x1000, filename="/tmp/para_orig.bin",
-                            parttype="user", display=False)
-    orig = orig[0] if isinstance(orig, tuple) else orig
-    if not orig or isinstance(orig, bool) or len(orig) < 0x1000:
-        # with a filename the readflash path returns True, not data — re-read
-        # into memory (no filename) to get bytes
-        orig = loader.readflash(addr=base, length=0x1000, filename="",
-                                parttype="user", display=False)
-        orig = orig[0] if isinstance(orig, tuple) else orig
-    if not orig or isinstance(orig, bool) or len(orig) < 0x1000:
-        print("[-] para read failed"); return 1
-    print(f"[*] para original head: {bytes(orig[:32]).hex()}")
+    orig = rd(loader, base, full)
+    if len(orig) != full:
+        print(f"[-] full read failed ({len(orig):#x} != {full:#x})")
+        return 1
+    open(ORIG_FULL, "wb").write(orig)
+    print(f"[*] original: md5={hashlib.md5(orig).hexdigest()} -> {ORIG_FULL}")
+    print(f"[*] head: {orig[:32].hex()}")
 
-    pattern = (b"PARATEST" * 128)[:0x1000]  # 4096 B distinctive
+    blob = PATTERN + orig[0x1000:]
+    assert len(blob) == full, "blob length bug"
+
     if not GO:
-        print("[dryrun] would write 0x1000 pattern to para. Rerun with PARA_GO=1")
+        print("[dryrun] would write the 0x1000 pattern to para. Rerun with PARA_GO=1")
         return 0
 
-    print("[!] WRITE-PARTITION 0x1000 pattern -> para ...")
-    time.sleep(3)
-    # NOTE: para partition full size may exceed 0x1000; per the fullsize lesson
-    # the DA region may be the WHOLE partition. To keep the transfer matched,
-    # send pattern padded to the FULL para size (zeros after 0x1000 would erase
-    # the rest... but pre_erase=NO means we only program; zeros would overwrite!
-    # Safer: write pattern+original-rest: pattern for first 0x1000, original for the rest.
-    fullsize = para.sectors * ss
-    blob = pattern + bytes(orig[0x1000:]) if fullsize > 0x1000 else pattern
-    blob = bytes(blob) + bytes(fullsize - len(blob)) if len(blob) < fullsize else bytes(blob[:fullsize])
-    ok, msg = xmlft.seccfg_write_partition(para, blob)
-    print(f"[*] write result: {ok!r} {msg!r}")
-
-    time.sleep(1.0)
-    rb = loader.readflash(addr=base, length=0x1000, filename="", parttype="user", display=False)
-    rb = rb[0] if isinstance(rb, tuple) else rb
-    if rb and not isinstance(rb, bool) and rb == pattern:
-        print("[+] PARA COMMITTED — program engine WORKS; seccfg is silently protected")
-        # restore
-        print("[*] restoring para original...")
-        time.sleep(1)
-        full = loader.readflash(addr=base, length=fullsize, filename="/tmp/para_after.bin",
-                                parttype="user", display=False)
-        ok2, _ = xmlft.seccfg_write_partition(para, bytes(orig) + bytes(fullsize - 0x1000))
-        rb2 = loader.readflash(addr=base, length=0x1000, filename="", parttype="user", display=False)
-        rb2 = rb2[0] if isinstance(rb2, tuple) else rb2
-        print(f"[*] para restore: {'OK' if rb2 == orig else 'MISMATCH'}")
-        return 0
-    elif rb and not isinstance(rb, bool) and rb == orig:
-        print("[-] para UNCHANGED — program phase does NOT commit (global write issue)")
-        return 1
-    else:
-        print(f"[!] para changed but != pattern: {bytes(rb[:32]).hex() if rb else None}")
-        return 1
+    verdict = 9
+    try:
+        print("[!] WRITE-PARTITION pattern -> para ...")
+        time.sleep(3)
+        ok, msg = xmlft.seccfg_write_partition(para, blob)
+        print(f"[*] write result: {ok!r} {msg!r}")
+        if ok:
+            time.sleep(1.0)
+            rb = rd(loader, base, 0x1000)
+            if rb == PATTERN:
+                print("[+] PARA COMMITTED — write path works")
+                verdict = 0
+            elif rb == orig[:0x1000]:
+                print("[-] para UNCHANGED — write did not commit")
+                verdict = 1
+            else:
+                print(f"[!] para changed but != pattern: {rb[:32].hex()}")
+                verdict = 1
+        else:
+            verdict = 2
+    finally:
+        print("[*] restoring para original (always) ...")
+        try:
+            time.sleep(1.0)
+            ok2, msg2 = xmlft.seccfg_write_partition(para, orig)
+            print(f"[*] restore write: {ok2!r} {msg2!r}")
+            time.sleep(1.0)
+            cur = rd(loader, base, full)
+            if cur == orig:
+                print(f"[+] para restored (md5 {hashlib.md5(cur).hexdigest()})")
+            else:
+                print("[!] RESTORE MISMATCH — rerun /home/musin/run_para_restore.sh "
+                      "immediately, do not reboot")
+                verdict = 6
+        except Exception as e:  # noqa: BLE001
+            print(f"[!] RESTORE FAILED: {e!r} — restore from {ORIG_FULL}")
+            verdict = 7
+    return verdict
 
 
 if __name__ == "__main__":

@@ -16,7 +16,7 @@ Companions: `re-tee-efuse.md` (Q1 baseline), `re-lk-rpmb-lock.md` (mirror format
    cleanly with this base (prior report's failure was an analysis artifact).
 2. **SFSRP region layout (proven formulas):** t-base's RPMB window is addressed
    from a single runtime base block **S** (u32 @ RAM 0x05F8471C):
-   * block **S** = 256-byte superblock, magic ASCII **"4400RPMB"**, version 2,
+   * block **S** = 256-byte superblock, magic **0x424D5052_3030344B** = ASCII **`K400RPMB`** (note: *not* "4400RPMB"), version 2,
      flags=0, size=0x100, **per-partition u64 anti-rollback counters at +0x40, +0x48, …**
    * blocks **S+1 … S+16** = the SFSL1 data window: 4 cache lines × 1 KB, line *i*
      read/written as **4 consecutive 256-B blocks at S + 4·i + 1**.
@@ -26,10 +26,9 @@ Companions: `re-tee-efuse.md` (Q1 baseline), `re-lk-rpmb-lock.md` (mirror format
    fetched at driver-init via the t-base property service (svc 0x2c) into RAM
    0x05F84718 (blob ≤ 0xC B: +0 u32 partition-enable bitmask, +2 u16 power-of-2
    size code, +4 u32 start block). If the property is absent the BSS default is
-   0 → S = 0. **Inference (strong):** on a working retail unit S ≥ 4 — if S were
-   0–3 the superblock/counter write (which fires on every sector open) would
-   collide with the LK mirror at sectors 0–3 and both sides would corrupt each
-   other every boot, which does not happen.
+   0 → S = 0. **S is unknown on this unit.** (The earlier "S ≥ 4" argument was
+   based on the LK mirror living at sectors 0–3; that is now disproven — the
+   mirror is at blocks **0x1DC–0x1DF**, so no collision argument exists.)
 4. **Empty vs garbage behavior (proven branch map):** superblock all-zero →
    `[SFSRP]Formating data` → silent in-RAM format (magic, version=2, size=0x100,
    counters = 0) → self-heals, **loses all previous t-base SFS state**.
@@ -138,15 +137,13 @@ write to RPMB after %d attempts" 0x5F81DA8.
   u32 at +4 of the `antiRollback.rpmbCfg` property value (runtime platform
   config; BSS default 0 if the property is absent — inference on the default
   path, the read at [0x5F8471C] itself is proven).
-  * S = superblock ("4400RPMB", version, flags, size, counters).
+  * S = superblock (`K400RPMB`, version, flags, size, counters).
   * S+1..S+16 = SFSL1 data (4 lines × 1 KB; line i = sectors S+4i+1 .. S+4i+4).
-* **Coexistence with the LK boot-info mirror (sectors 0–3, 1 KB @ block 0):**
-  the two layouts are disjoint **iff S ≥ 4**. The code contains no hardcoded
-  nonzero start sector; the only sane shipping configuration keeps the
-  superblock out of 0–3 because the superblock is rewritten on essentially
-  every sector open (counter bump) — a collision with a block LK rewrites every
-  boot would be immediately visible in the field. **Inference (strong): S ≥ 4;
-  exact value platform-configured, not in the image.**
+* **Coexistence with the LK boot-info mirror (blocks 0x1DC–0x1DF):** the two
+  layouts collide only if S falls inside 0x1DC..0x1DF(+16). With the mirror no
+  longer at 0–3, the old "S ≥ 4" inference is **withdrawn**; S must be measured
+  (RAM 0x05F8471C in MTEE, or a dump of the RPMB area once a working UFS RPMB
+  reader exists).
 * There is no separate "SFS start sector" knob in code — the single property
   blob carries both the size code and the start block.
 
@@ -178,10 +175,13 @@ write to RPMB after %d attempts" 0x5F81DA8.
 
 ## 5. Concrete on-device pre-check procedure (before touching sectors 0–3)
 
-1. **Dump RPMB sectors 0–0x1F via DA2 with the AP quiesced** (DA mode;
-   `da rpmb r` — frame layer per re-da2-rpmb-key.md; reads need no key):
-   look for the 8-byte magic **"4400RPMB"** (hex `34 34 30 30 52 50 4D 42`) at
-   any 256-B sector boundary.
+1. **Dump RPMB sectors around the expected window with the AP quiesced**
+   (caveat: the mtkclient `da rpmb` path resolves to the **eMMC/MSDC** stub and
+   does not reach UFS RPMB — see `re-consistency-audit-2.md` §1; also, RPMB read
+   *requests* carry no MAC but the *responses are MAC'd*, so "reads need no key"
+   is wrong: without the key the reply cannot be authenticated).
+   Look for the 8-byte magic **`K400RPMB`** (hex `4B 34 30 30 52 50 4D 42`) at
+   any 256-B block boundary, and separately for the LK mirror at **0x1DC–0x1DF**.
    * Found at sector k → **S = k**. If k ≥ 4 (expected): sectors 0–3 are LK-only
      → mirror write is safe w.r.t. t-base. Record k and never write ≥ k.
    * Not found in 0–0x1F → widen the read (0x20–0x80). Still nothing → either

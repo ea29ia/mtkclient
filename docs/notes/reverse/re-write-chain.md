@@ -1,5 +1,12 @@
 # RE: USB-received write payload → storage-write data path (RMX3630 OPLUS DA2)
 
+> **ERRATA (2026-10-24, audit #2):** (1) the program dispatcher 0x4002AAC0 is
+> **dead code**; the storage table slot is **+8** (0x40054328), not +0x10.
+> (2) `<pre_erase>NO</pre_erase>` **is always sent** (xml_cmd.py:453), so the DA
+> erase phase was skipped **by the flag** — the "silent erase" model is void.
+> (3) The write loop has a single exit (`accumulated == target`).
+> See `re-consistency-audit-2.md` §C3/§3.
+
 Binary: `docs/notes/rmx3630-da2/da2_oplus.bin` (356296 B, file offset 0 == VA 0x40000000),
 ARM32. Tool: radare2 (`-a arm -b 32 -m 0x40000000`). This answers open question:
 **is the uploaded payload written as-received, or does a SEC "normalizer" rewrite it?**

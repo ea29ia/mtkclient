@@ -1,5 +1,10 @@
 # Audit: proposed `mov r0,#0` patch at 0x4000325c (WRITE-FLASH erase kill) — RMX3630 DA2
 
+> **ERRATA (2026-10-24, audit #2):** 0x4000EA94 is a recursive tree free
+> (mxmlDelete), not "send error status to host"; the erase-call safety verdict
+> for 0x4000325C still stands. Also: `pre_erase=NO` is sent by the host, so the
+> erase phase is skipped before any patch matters. See `re-consistency-audit-2.md`.
+
 Binary: `docs/notes/rmx3630-da2/da2_oplus.bin`, VA base 0x40000000, ARM32.
 Tooling: `r2 -a arm -b 32 -m 0x40000000` (radare2 6.2.4). All addresses are VAs.
 Question under audit: does replacing `blx r2` @ `0x4000325c` with `mov r0,#0`

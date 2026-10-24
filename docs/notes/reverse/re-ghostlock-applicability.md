@@ -1,5 +1,10 @@
 # GhostLock (CVE-2026-43499) applicability — RMX3630 / realme 10 4G
 
+> **ERRATA (2026-10-24, audit #2):** conclusions conditional on "seccfg/unlock
+> succeeds" are moot until the re-lock is solved: the forged lock=3 did not
+> survive the reboot (LK re-locked via the RPMB mirror check).
+> See `re-unlock-campaign-2026-10-24.md`.
+
 Date: 2026-10-24. Method: kernel extracted from our own `boot.img`
 (docs/notes/rmx3630-lk/boot.img → gzip-decompressed 49 MB aarch64 Image),
 embedded ikconfig found via `IKCFG_ST` (5800 CONFIG lines) and analyzed.

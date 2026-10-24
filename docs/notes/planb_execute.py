@@ -15,8 +15,17 @@ Sequence:
   3) parse live seccfg as V4, build unlock payload via the DA's own SEJ
      (valid HACC hash by construction),
   4) pad to full partition size, WRITE-PARTITION,
-  5) same-session readback verify (lock_state must read 3),
-  6) reboot via WDT (CUSTOMREGW nibble already 0) -> ORANGE STATE on next boot.
+  5) same-session readback verify (lock_state must read 3) — this proves the
+     bytes reached the flash, NOT that the unlock persists,
+  6) reboot via WDT (CUSTOMREGW nibble already 0).
+
+WARNING (audit #2 / campaign result 2026-10-24): after the reboot LK re-locks
+the device when the RPMB boot-info mirror says locked (blocks 0x1DC-0x1DF,
+field +0xC == 1): double_check_lock_state calls sec_cfg_set_lock_state(locked)
+and powers off.  The record is re-signed with a deterministic HACC digest, so
+the partition comes back byte-identical to the original — a reverted image is
+NOT evidence that the write failed.  Verify persistence only in a FRESH
+preloader session (seccfg_snapshot.py).
 
 Env: PLAN_B_GO=1 for the real write (default dry-run).
 """
@@ -137,8 +146,11 @@ def main():
         print(f"[*] readback: magic={magic:#x} ver={ver} size={size:#x} lock_state={lock} "
               f"dm_verity={dmv:#x} sboot={sboot:#x} end={endf:#x}")
         if lock == 3:
-            print("[+] WRITE COMMITTED — lock_state=3 in flash")
-            print("[*] rebooting -> next boot should be ORANGE STATE (unlocked)")
+            print("[+] WRITE COMMITTED (same session) — lock_state=3 in flash")
+            print("[!] This does NOT prove persistence: LK re-locks when the RPMB "
+                  "mirror (blocks 0x1DC-0x1DF, +0xC) reads 1. Expect a revert on "
+                  "the next boot; verify with seccfg_snapshot.py afterwards.")
+            print("[*] rebooting -> next boot state must be checked, not assumed")
             try:
                 loader.shutdown(bootmode=loader.ShutDownModes.NORMAL)
             except Exception as e:

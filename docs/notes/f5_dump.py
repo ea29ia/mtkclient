@@ -80,7 +80,8 @@ def main():
         print("[dryrun] rerun with F5_GO=1")
         return 0
 
-    pattern = (b"PARATEST" * 128)[:0x1000]
+    pattern = (b"PARATEST" * 0x200)[:0x1000]
+    assert len(pattern) == 0x1000
     blob = pattern + bytes(orig[0x1000:]) if fullsize > 0x1000 else pattern
     blob = bytes(blob) + bytes(fullsize - len(blob)) if len(blob) < fullsize else bytes(blob[:fullsize])
     print(f"[!] WRITE-PARTITION {len(blob):#x} B -> para ...")

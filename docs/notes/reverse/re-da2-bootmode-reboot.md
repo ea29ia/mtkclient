@@ -1,5 +1,12 @@
 # RE: DA2 CMD:SET-BOOT-MODE (0x40005d84) и CMD:REBOOT (0x40005ba8) — полные карты, судьба boot-mode, почему reboot уходит в NORMAL
 
+> **ERRATA (2026-10-24, audit #2):** this document and `re-rgu-nibble-loss.md`
+> contradict each other about the nibble ("lost before LK ⇒ NORMAL" vs
+> "consumed by LK ⇒ probably fastboot"). Observed device state (`22d9:2046`
+> Android composite) supports **NORMAL**, so "probably fastboot" is unsupported.
+> Correct FASTBOOT conditions: HW nibble 3, or rc_wdt-class && seccfg==3.
+> See `re-consistency-audit-2.md` §C6.
+
 Date: 2026-10-24. Binary: `/home/musin/firmware/extracted/IMAGES/da2_oplus.bin` (356296 B),
 ARM32, **VA = file offset + 0x40000000** (все адреса ниже — VA).
 Инструмент: capstone-скрипт `/tmp/opencode/da2/da2dis.py` (линейный дизасм + резолв

@@ -1,5 +1,11 @@
 # Q3: Is oplusreserve2 (UFS 0x4800000) the "master copy" the SEC service restores seccfg from?
 
+> **ERRATA (2026-10-24, audit #2):** the recommendation to force the state
+> writers 0x40035000/0x40035014 to `#3` is **withdrawn** — those are slot-identity
+> classification writers (1/2) and forcing them can fail-safe the seccfg read to
+> LOCKED. Also, the LK mirror is at RPMB blocks 0x1DC–0x1DF, and no working RPMB
+> write path exists from the DA. See `re-consistency-audit-2.md`.
+
 **Verdict: NO.** The DA2 SEC service never reads oplusreserve2. The state=2
 "regeneration" after a full WRITE-PARTITION of seccfg is produced entirely from
 the seccfg partition's *own* dual-record structure (main record @+0x00, backup

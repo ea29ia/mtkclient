@@ -1,5 +1,12 @@
 # Consistency audit — RMX3630/MT6789 RE reports vs mtkclient implementation
 
+> **HISTORICAL (audit #1).** Superseded in parts by `re-consistency-audit-2.md`:
+> the 0x4002AAC0 "program dispatcher" model (dead code; slot +8), the
+> "0x4002f804 hash-list check" label, the "state-writer patches must be removed"
+> (now default-off), the "missing patches" list (all implemented, default-off),
+> the heapbait bug list (fixed), and `v6.seccfg()` padding (padding lives in the
+> caller; `seccfg_write_partition` sends `len(writedata)` verbatim).
+
 Date: 2026-10-24. Scope: all `docs/notes/re-*.md`, campaign docs (`rmx3630-da2/README.md`,
 `rmx3630_session_2026-10-23.md`, `oplus_mt6789_rmx3630.md`, `HANDOFF-rmx3630.md`), and
 `heapbait.py`, `xml_lib.py` (apply_oplus_runtime_patches), `seccfg.py`, `v6.py seccfg()`.

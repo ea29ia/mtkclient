@@ -1,5 +1,10 @@
 # WRITE-FLASH "anti-tamper scrubber" — reverse-engineering report (RMX3630 OPLUS DA2)
 
+> **ERRATA (2026-10-24, audit #2):** (1) `pre_erase=NO` is always emitted, so
+> the "no pre_erase / silent erase" premise is wrong. (2) At 0x400031A8 the
+> operand is `[sp,#0x31]` (not 0x30) and at 0x40003234 `movt #0x4002` (not
+> 0x4004). See `re-consistency-audit-2.md` §C3/§3.
+
 Binary: `docs/notes/rmx3630-da2/da2_oplus.bin` (md5 74d2b9f2…), VA base 0x40000000,
 ARM32. Tooling: radare2 (`r2 -a arm -b 32 -m 0x40000000`). All addresses below are VAs.
 
