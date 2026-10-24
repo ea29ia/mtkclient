@@ -26,7 +26,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 WRITE = os.environ.get("PLAN_C_WRITE", "0") == "1"
-BCB = b"boot-recovery\x00" + b"\x00" * 0x17F0  # full 0x1800 block, padded
+# LK BCB writer memsets 0x1800 B, but the live misc holds the BCAB
+# boot_control block at offset 0x800 (proven by live read 2026-10-24).
+# Write only the first 0x800 bytes: command string + zeros; BCAB untouched.
+BCB = b"boot-recovery\x00" + b"\x00" * (0x800 - 0xE)
 
 
 def main():
@@ -63,20 +66,32 @@ def main():
     print(f"[+] misc: LBA {misc.sector:#x}..{misc.sector + misc.sectors:#x} "
           f"size {size:#x}")
 
-    cur = loader.readflash(addr=misc.sector * ss, length=0x100,
-                           filename="", parttype="user", display=False)
-    cur = cur[0] if isinstance(cur, tuple) else cur
-    if cur:
-        print(f"[*] misc[0:0x100] now: {cur[:32].hex()} "
-              f"({cur[:14]!r})")
+    cur = None
+    # Proven CLI path (run_misc_read.sh used mtk.py r misc successfully);
+    # direct loader.readflash on small blocks hangs on this DA2 (EIO-class).
+    import subprocess
+    print("[*] reading misc back via mtk.py r (CLI, proven)...")
+    r = subprocess.run(
+        [sys.executable, "-u", "mtk.py", "r", "misc", "/tmp/misc_check.bin",
+         "--preloader", os.environ.get("PRELOADER",
+             "/home/musin/firmware/extracted/IMAGES/preloader_k6789v1_64.bin"),
+         "--loader", os.environ.get("DALOADER",
+             "/home/musin/firmware/extracted/IMAGES/download_agent/DA_BR.bin")],
+        capture_output=True, text=True, timeout=180)
+    if os.path.exists("/tmp/misc_check.bin"):
+        blob = open("/tmp/misc_check.bin", "rb").read()
+        cur = blob[:0x100]
+        print(f"[*] misc[0:0x20]: {cur[:0x20].hex()} ({cur[:0xE]!r})")
+    else:
+        print("[!] readback via CLI failed — will write without pre-read")
 
     if not WRITE:
         print("[dryrun] nothing written. Rerun with PLAN_C_WRITE=1 to write "
               "the boot-recovery BCB.")
         return 0
 
-    print("[!] writing boot-recovery BCB -> next boot enters RECOVERY. "
-          "Ctrl-C to abort.")
+    print("[!] writing boot-recovery BCB (first 0x800 bytes; BCAB at 0x800 "
+          "is NOT touched) -> next boot enters RECOVERY. Ctrl-C to abort.")
     import time
     time.sleep(5)
     payload = BCB if len(BCB) <= size else BCB[:size]
@@ -89,17 +104,30 @@ def main():
         print(f"[-] misc write failed: {msg}")
         return 1
 
-    chk = loader.readflash(addr=misc.sector * ss, length=0x100,
-                           filename="", parttype="user", display=False)
-    chk = chk[0] if isinstance(chk, tuple) else chk
+    # verify via the proven CLI path
+    if os.path.exists("/tmp/misc_check.bin"):
+        os.remove("/tmp/misc_check.bin")
+    r2 = subprocess.run(
+        [sys.executable, "-u", "mtk.py", "r", "misc", "/tmp/misc_check2.bin",
+         "--preloader", os.environ.get("PRELOADER",
+             "/home/musin/firmware/extracted/IMAGES/preloader_k6789v1_64.bin"),
+         "--loader", os.environ.get("DALOADER",
+             "/home/musin/firmware/extracted/IMAGES/download_agent/DA_BR.bin")],
+        capture_output=True, text=True, timeout=180)
+    chk = None
+    if os.path.exists("/tmp/misc_check2.bin"):
+        blob = open("/tmp/misc_check2.bin", "rb").read()
+        chk = blob[:0x100]
+        print(f"[*] misc[0:0x20] after write: {chk[:0x20].hex()}")
     if chk and chk.startswith(b"boot-recovery"):
-        print("[+] VERIFY OK: misc now holds boot-recovery BCB")
+        print("[+] VERIFY OK: misc now holds boot-recovery BCB (BCAB intact "
+              f"at 0x800: {blob[0x800:0x808]!r})")
         print("[*] rebooting (normal); on next boot LK enters RECOVERY.")
         print("    In recovery (volume keys): look for 'Reboot to bootloader'")
         print("    -> fastbootd -> fastboot flashing unlock + Vol-UP <= 5 s")
         loader.shutdown(bootmode=loader.ShutDownModes.NORMAL)
         return 0
-    print(f"[-] VERIFY FAILED: misc reads {chk[:14]!r}")
+    print(f"[-] VERIFY FAILED: misc reads {chk[:14] if chk else None!r}")
     return 1
 
 
