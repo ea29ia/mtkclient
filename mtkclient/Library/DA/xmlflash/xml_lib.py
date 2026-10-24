@@ -1674,11 +1674,11 @@ class DAXML(metaclass=LogBase):
             self.send_command(self.cmd.cmd_set_boot_mode(mode=BootModes.testmode))
         elif bootmode == ShutDownModes.META:
             self.send_command(self.cmd.cmd_set_boot_mode(mode=BootModes.meta))
-        if self.send_command(self.cmd.cmd_reboot(disconnect=False)):
-            self.mtk.port.close(reset=True)
+        if self.send_command(self.cmd.cmd_reboot(disconnect=False), noack=True):
+            # REBOOT is DPC-deferred: DA acks, then executes on the next
+            # cmd_loop iteration and closes USB. Waiting for the OK here
+            # races the WDT reset (EIO noise). Fire-and-forget.
             return True
-        else:
-            self.error("Error on sending reboot")
         self.mtk.port.close(reset=True)
         return False
 
