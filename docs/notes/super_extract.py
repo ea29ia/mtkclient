@@ -210,22 +210,19 @@ class Ext4:
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument('--super', default='super')
-    ap.add_argument('--part', default='system')
-    ap.add_argument('--path', default='/bin/init')
-    ap.add_argument('--out', default='')
-    ap.add_argument('--list', action='store_true')
-    args = ap.parse_args()
-
     import mtk as mtk_cli
     parser = mtk_cli.create_base_parser()
     parser = argparse.ArgumentParser(parents=[parser], description=mtk_cli.INFO)
+    parser.add_argument('--super', default='super')
+    parser.add_argument('--part', default='system')
+    parser.add_argument('--path', default='/bin/init')
+    parser.add_argument('--out', default='')
+    parser.add_argument('--list', action='store_true')
     sub = parser.add_subparsers(dest='cmd', required=False)
     sub.add_parser('custom')
-    cargs = parser.parse_args(sys.argv[1:] + ['custom'])
+    args = parser.parse_args(sys.argv[1:] + ['custom'])
     from mtkclient.Library.mtk_main import Main
-    mtk = Main(cargs).run(parser)
+    mtk = Main(args).run(parser)
     if mtk is None:
         print("[-] connect failed")
         return 1
