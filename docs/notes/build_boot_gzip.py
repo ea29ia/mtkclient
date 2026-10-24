@@ -56,12 +56,33 @@ def main():
             e['data'] = patch_prop(e['data'].decode('utf-8', 'replace'), PROPS).encode()
             changed.append(e['name'])
     pub = open(key, 'rb').read().strip()
+    # /prop.default is loaded by first-stage init BEFORE /system/build.prop, and
+    # `ro.*` properties are write-once -> our values win.  (The
+    # system/etc/ramdisk/build.prop file is a build artefact, not loaded here.)
+    prop_default = (
+        "# added by boot_ramdisk_patch: enable adb without screen approval\n"
+        "ro.adb.secure=0\n"
+        "ro.debuggable=1\n"
+        "ro.secure=0\n"
+        "persist.sys.usb.config=adb\n"
+        "persist.sys.usb.port=none\n"
+    ).encode()
+    names = {e['name'] for e in ents}
+    if 'prop.default' in names:
+        for e in ents:
+            if e['name'] == 'prop.default':
+                e['data'] = prop_default
+    else:
+        ents.insert(len(ents) - 1, dict(name='prop.default', mode=0o100644, uid=0,
+                                        gid=0, nlink=1, mtime=0, devmajor=0,
+                                        devminor=0, rdevmajor=0, rdevminor=0,
+                                        data=prop_default))
     ents.insert(len(ents) - 1, dict(name='adb_keys', mode=0o100644, uid=0, gid=0,
                                     nlink=1, mtime=0, devmajor=0, devminor=0,
                                     rdevmajor=0, rdevminor=0, data=pub + b'\n'))
     new_raw = cpio_build(ents)
     comp = gzip.compress(new_raw, 9, mtime=0)
-    print(f"[*] patched props in {changed}; /adb_keys {len(pub)} B")
+    print(f"[*] patched props in {changed}; /prop.default + /adb_keys ({len(pub)} B)")
     print(f"[*] cpio {len(new_raw):#x} -> gzip {len(comp):#x}")
 
     slot = vb_off - p['rd_off']
