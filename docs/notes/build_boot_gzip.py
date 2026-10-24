@@ -67,22 +67,36 @@ def main():
         "persist.sys.usb.config=adb\n"
         "persist.sys.usb.port=none\n"
     ).encode()
-    names = {e['name'] for e in ents}
-    if 'prop.default' in names:
+    # GKI (Android 12+) mechanism: first-stage init copies /adb_debug.prop and
+    # /userdebug_plat_sepolicy.cil into /second_stage_resources when the marker
+    # /force_debuggable exists; second-stage property_service then loads
+    # adb_debug.prop with the highest priority (honoured only in orange state).
+    adb_debug_prop = (
+        "ro.adb.secure=0\n"
+        "ro.debuggable=1\n"
+        "ro.force.debuggable=1\n"
+        "persist.sys.usb.config=adb\n"
+    ).encode()
+
+    def add_file(name, data, mode=0o100644):
         for e in ents:
-            if e['name'] == 'prop.default':
-                e['data'] = prop_default
-    else:
-        ents.insert(len(ents) - 1, dict(name='prop.default', mode=0o100644, uid=0,
-                                        gid=0, nlink=1, mtime=0, devmajor=0,
-                                        devminor=0, rdevmajor=0, rdevminor=0,
-                                        data=prop_default))
+            if e['name'] == name:
+                e['data'] = data
+                return
+        ents.insert(len(ents) - 1, dict(name=name, mode=mode, uid=0, gid=0,
+                                        nlink=1, mtime=0, devmajor=0, devminor=0,
+                                        rdevmajor=0, rdevminor=0, data=data))
+
+    add_file('force_debuggable', b'')
+    add_file('adb_debug.prop', adb_debug_prop)
+    add_file('prop.default', prop_default)   # legacy fallback, harmless
     ents.insert(len(ents) - 1, dict(name='adb_keys', mode=0o100644, uid=0, gid=0,
                                     nlink=1, mtime=0, devmajor=0, devminor=0,
                                     rdevmajor=0, rdevminor=0, data=pub + b'\n'))
     new_raw = cpio_build(ents)
     comp = gzip.compress(new_raw, 9, mtime=0)
-    print(f"[*] patched props in {changed}; /prop.default + /adb_keys ({len(pub)} B)")
+    print(f"[*] patched props in {changed}; + /force_debuggable, /adb_debug.prop, "
+          f"/prop.default, /adb_keys ({len(pub)} B)")
     print(f"[*] cpio {len(new_raw):#x} -> gzip {len(comp):#x}")
 
     slot = vb_off - p['rd_off']
