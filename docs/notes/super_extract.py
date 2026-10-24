@@ -85,18 +85,35 @@ def parse_lp(rd: Reader, dump_hdr: bool = False):
     print(f"[*] LP geometry @{geo_off:#x}: max={meta_max:#x} slots={slot_count} "
           f"block={lb}")
 
-    def try_parse(hdr):
-        if len(hdr) < 0x60 or struct.unpack_from("<I", hdr, 0)[0] != LP_HDR_MAGIC:
+    def try_parse(buf, hdr_off):
+        """Returns (desc_base, po, pn, eo, en, tables_base) or None.
+
+        On this OPPO/MTK build the LP header carries an extra 56-byte block, so
+        the descriptors sit at 0x50 (not 0x18).  Table offsets are relative to
+        hdr_off + header_size.
+        """
+        if struct.unpack_from("<I", buf, 0)[0] != LP_HDR_MAGIC:
             return None
-        for cand in (24, 20, 28, 32):
+        hs = struct.unpack_from("<I", buf, 8)[0]
+        if not (0x40 <= hs <= 0x1000):
+            return None
+        for db in (0x50, 0x18, 0x14, 0x2c):
             try:
-                po, pn, pe = struct.unpack_from("<III", hdr, cand)
-                eo, en, ee = struct.unpack_from("<III", hdr, cand + 12)
+                po, pn, pe = struct.unpack_from("<III", buf, db)
+                eo, en, ee = struct.unpack_from("<III", buf, db + 12)
+                go, gn, ge = struct.unpack_from("<III", buf, db + 24)
+                bo, bn, be = struct.unpack_from("<III", buf, db + 36)
             except struct.error:
                 continue
-            if pe == 52 and ee == 24 and 0 < pn < 200 and 0 < en < 100000 \
-                    and po + pn * 52 <= len(hdr) and eo + en * 24 <= len(hdr):
-                return (cand, po, pn, eo, en)
+            if not (pe == 52 and ee == 24 and ge == 48 and be == 64):
+                continue
+            if not (0 < pn < 200 and 0 < en < 100000):
+                continue
+            if hs + po + pn * pe > len(buf) or hs + eo + en * ee > len(buf):
+                continue
+            if hs + go + gn * ge > len(buf) or hs + bo + bn * be > len(buf):
+                continue
+            return (db, po, pn, eo, en, hs)
         return None
 
     hits = []
@@ -109,6 +126,7 @@ def parse_lp(rd: Reader, dump_hdr: bool = False):
             hits.append(off)
         off += 0x1000
     print(f"[*] LP header candidates: {[hex(x) for x in hits]}")
+
     if dump_hdr and hits:
         h = hits[0]
         hdr = rd.read(h, 0x100)
@@ -118,33 +136,31 @@ def parse_lp(rd: Reader, dump_hdr: bool = False):
         dw = struct.unpack_from("<32I", hdr, 0)
         print("[*] dwords:", " ".join(f"{v:#x}" for v in dw))
         print(f"    magic={dw[0]:#x} v={dw[1]&0xffff}.{dw[1]>>16} "
-              f"hdr_size={dw[2]:#x} hdr_csum={dw[3]:#x} tables_size={dw[4]:#x} "
-              f"tables_csum={dw[5]:#x}")
-        for base in (6, 5, 7, 8):
-            try:
-                print(f"    desc@{base*4:#x}: parts={struct.unpack_from('<III', hdr, base*4)} "
-                      f"extents={struct.unpack_from('<III', hdr, base*4+12)}")
-            except struct.error:
-                pass
+              f"hdr_size={dw[2]:#x} hdr_csum={dw[3]:#x}")
+        for db in (0x50, 0x18, 0x2c):
+            po, pn, pe = struct.unpack_from("<III", hdr, db)
+            eo, en, ee = struct.unpack_from("<III", hdr, db + 12)
+            print(f"    desc@{db:#x}: parts=({po},{pn},{pe}) extents=({eo},{en},{ee})")
         return 0
 
     chosen = None
     for hoff in hits:
-        hdr = rd.read(hoff, min(meta_max, 0x20000))
-        r = try_parse(hdr)
-        print(f"    @{hoff:#x}: v{struct.unpack_from('<HH', hdr, 4)} "
-              f"hdr_size={struct.unpack_from('<I', hdr, 8)[0]} -> {r}")
+        buf = rd.read(hoff, min(meta_max, 0x20000))
+        r = try_parse(buf, hoff)
+        print(f"    @{hoff:#x}: hdr_size={struct.unpack_from('<I', buf, 8)[0]:#x}"
+              f" -> {None if r is None else r}")
         if r and chosen is None:
-            chosen = (hoff, hdr, r)
+            chosen = (hoff, buf, r)
     if chosen is None:
         raise ValueError("no parseable LP metadata header found")
-    hdr_off, hdr, (base_off, parts_off, parts_num, ext_off, ext_num) = chosen
-    print(f"[*] using header @{hdr_off:#x}: parts(off={parts_off} n={parts_num}) "
-          f"extents(off={ext_off} n={ext_num})")
+    hdr_off, buf, (desc_base, parts_off, parts_num, ext_off, ext_num, tb) = chosen
+    print(f"[*] using header @{hdr_off:#x}: desc@{desc_base:#x}, tables@{tb:#x}, "
+          f"parts={parts_num}, extents={ext_num}")
 
     parts = []
     for i in range(parts_num):
-        e = hdr[parts_off + i * 52: parts_off + (i + 1) * 52]
+        o = tb + parts_off + i * 52
+        e = buf[o:o + 52]
         if len(e) < 52:
             break
         name = e[:36].split(b"\x00")[0].decode()
@@ -152,7 +168,8 @@ def parse_lp(rd: Reader, dump_hdr: bool = False):
         parts.append(dict(name=name, first_ext=first_ext, num_ext=num_ext))
     exts = []
     for i in range(ext_num):
-        e = hdr[ext_off + i * 24: ext_off + (i + 1) * 24]
+        o = tb + ext_off + i * 24
+        e = buf[o:o + 24]
         if len(e) < 24:
             break
         num_sectors, ttype, tdata, tsrc = struct.unpack("<QIQI", e)
