@@ -1,10 +1,11 @@
 # Campaign log — RMX3630 (MT6789) unlock / ADB campaign
 
 > Snapshot of the working log kept at `/home/musin/problem_status.md` (Russian, append-only).
-> Committed to the fork on 2026-10-24 so the whole trail lives with the code.
-> §11 is superseded by §12–§13; the current conclusions are in
-> `docs/notes/reverse/re-unlock-campaign-2026-10-24.md` and
-> `docs/notes/reverse/re-consistency-audit-2.md`.
+> Committed to the fork so the whole trail lives with the code.
+> §11 is superseded by §12–§17. Current summary:
+> `docs/notes/STATUS-rmx3630-2026-10-24.md`; detailed reports under
+> `docs/notes/reverse/` (`re-unlock-campaign-2026-10-24.md`,
+> `re-consistency-audit-2.md`).
 
 # RMX3630 (MT6789/Helio G99) — разблокировка загрузчика. Статус проблемы.
 
@@ -343,3 +344,99 @@ MIDI-only USB, `expdb` = 0.
 2. `./run_rpmb_probe.sh` — читает **0x1DC–0x1DF**, сравнивает данные под
    ключом D и неверным ключом (read-only).
 3. Эксперимент с reset-reason для пути (b) в fastboot.
+
+## 14. test9 / test9a: оба вопроса закрыты (2026-10-24 21:40)
+
+### write_reach (log `test9`)
+`WRITE_REACH_GO=1 ./run_write_reach.sh`:
+маркеры в начале И в конце (`0x7f000`) записались, образ 0x80000, restore
+вернул md5 `00ff461906b45fc4af74f81839a30069`. ⇒ **DA пишет всю партицию**.
+Значит 8-МБ seccfg дошла до конца, и вернувшийся маркер `0x200` — это
+**внешний полный restore**, а не неполная запись.
+
+### rpmb_probe (log `test9a`)
+Блоки `0x1DC–0x1DF` вернули НАСТОЯЩИЕ данные:
+`sboot=0 dev_info=1 bootmode=0 locked=1 aux=0`, строка `"RMX3630RU"` в +0x20,
+SHA-256 валиден. Блоки 0–3 пустые. Чтение неверным ключом дало те же байты
+(запрос RPMB-read без MAC — это ничего не доказывает про ключ).
+`GET-RPMB-KEY-STATUS` = `NOT-EXIST` (на UFS слабый сигнал).
+
+### Следующий шаг — `run_rpmb_unlock_mirror.sh`
+`docs/notes/rpmb_unlock_mirror.py`: dry-run читает зеркало и строит unlocked
+блок; `MIRROR_WRITE_GO=1` пишет его ключом D, проверяет readback, и только
+если запись встала — пишет seccfg lock=3 и перезагружает. Если ключ не тот,
+запись отвергается (JEDEC auth failure), seccfg не трогается.
+Откат: `MIRROR_RESTORE=1` из `/home/musin/rpmb_mirror_before.bin`.
+
+## 15. test11: RPMB-зеркало ЗАПИСАНО (2026-10-24 21:46)
+
+`MIRROR_WRITE_GO=1 ./run_rpmb_unlock_mirror.sh`:
+- ключ D (`75a41c1a…`, SEJ/HACC от MEID) **подошёл** — запись блоков
+  `0x1DC–0x1DF` на UFS принята, readback: `locked=0`, `hash VALID`;
+- затем в той же сессии записан `seccfg lock=3` (readback подтвердил),
+  свежий бэкап `seccfg_before_mirror_unlock_20261024_214627.bin`
+  (md5 `12a94a3f…` = сток);
+- сохранены: `/home/musin/rpmb_mirror_before.bin` (md5 `2374972d…`, locked=1)
+  и `/home/musin/rpmb_mirror_new.bin` (md5 `11a2d0c1…`, locked=0).
+
+После ребута устройство **не вышло в Android**: в dmesg многократные
+`22d9:0006` (preloader) с циклом ~110 с. Причина не установлена (ритуал
+включения / цикл на preloader / побочка от записи RPMB).
+
+Добавлен read-only чекер `docs/notes/unlock_state_check.py`
+(`./run_unlock_state_check.sh`): читает `seccfg` (заголовок + полный md5) и
+зеркало `0x1DC–0x1DF`, печатает вердикт:
+`lock=3 + mirror locked=0` → unlock удержался.
+Откат зеркала: `MIRROR_RESTORE=1 ./run_rpmb_unlock_mirror.sh`.
+
+## 16. test12: unlock УДЕРЖАЛСЯ, Android не поднялся (2026-10-24 21:55)
+
+`./run_unlock_state_check.sh`:
+- `seccfg`: `lock=3 dm_verity=0 sboot=0`, полный md5 `a75ce366…` (не сток);
+- `RPMB mirror`: `locked=0`, hash VALID, md5 `11a2d0c1…` — **ровно наш блок**,
+  никто его не переписал;
+- вердикт: **UNLOCK PERSISTED**.
+
+Нюанс: вендорский маркер `seccfg+0x200` (`9079092200000001`) снова на месте,
+хотя наш 8-МБ образ его обнулял, а заголовок остался наш. ⇒ есть отдельный
+актор, который восстанавливает только область 0x200 (preloader или NV-init),
+не трогая основную запись.
+
+Android не появился как `22d9:2046`; в dmesg только `22d9:0006` (preloader)
+с циклом ~110 с — так же выглядит **выключенный** телефон с
+`off-mode-charge=1` (в `para` ENV есть `off-mode-charge=1`; ранний тест para
+потерял `dm_ota=1` — безвредно). То есть «не поднялся» пока не доказано.
+
+Диагностика: `/home/musin/watch_usb.sh` (пишет изменения USB 240 с) + реальное
+включение кнопкой Power при подключённом кабеле. Если снова preloader —
+откат в сток (`MIRROR_RESTORE=1` + `seccfg lock=4`) для восстановления
+базовой загрузки, затем другой вариант unlock.
+
+## 17. ИТОГ / ГДЕ МЫ (2026-10-24 22:05)
+
+Сводка: `docs/notes/STATUS-rmx3630-2026-10-24.md`.
+
+### Нарыли
+- «Тихая запись» = наш же stub в диспетчере 0x4002F804 (снят, по умолчанию OFF).
+- WRITE-PARTITION пишет **весь** регион (test9: маркеры в голове и хвосте + restore).
+- `pre_erase=NO` отправляется всегда; erase пропускался флагом.
+- Зеркало LK — в RPMB-блоках **0x1DC–0x1DF** (0x1DC = поле адреса JEDEC-кадра).
+- Формат: +0x4 sbc, +0x8 bootmode, +0xC locked, +0x10 aux, +0x20 "RMX3630RU",
+  +0x3E0 SHA-256.
+- **SEJ/HACC-ключ `75a41c1a…` = реальный RPMB-ключ**: аутентифицированная
+  запись на UFS принята.
+- FASTBOOT: только HW-ниббл 3 или `rc_wdt-class && lock==3`; ATAG 1/4/7 — нет.
+- В доках было ~40 ошибок → аудит #2 + errata во всех затронутых файлах.
+
+### Смогли
+`seccfg lock=3` + `RPMB mirror locked=0` **удержались после ребута** (test12),
+зеркало = наш блок `11a2d0c1…`, seccfg full md5 `a75ce366…`. Это первый
+устойчивый unlock на аппарате.
+
+### Где мы
+Телефон пока не предъявил `22d9:2046` (Android); в 22:00 после hard reset
+(Vol+ + Power) на USB вообще ничего (test13 пуст). Гипотезы: (1) телефон
+выключен/зарядка при `off-mode-charge=1`; (2) LK выключает (AVB/boot-state);
+(3) t-base счётчик RPMB. Проверка — `watch_usb.sh` + Power; состояние —
+`./run_unlock_state_check.sh`; откат — `MIRROR_RESTORE=1` + сток seccfg
+`…214627.bin`.
