@@ -798,6 +798,7 @@ class DAXML(metaclass=LogBase):
         from mtkclient.Library.Exploit.exptools.arm_tools import ArmTools
         at = ArmTools(da2, da2address)
 
+        patches = []
         ret_r0 = b"\x00\x00\xA0\xE3\x1E\xFF\x2F\xE1"  # MOV R0, #0 ; BX LR
         ret_r1 = b"\x01\x00\xA0\xE3\x1E\xFF\x2F\xE1"  # MOV R0, #1 ; BX LR
 
@@ -807,8 +808,6 @@ class DAXML(metaclass=LogBase):
         #    Success requires !=0 -> patch both to MOV R0,#1.
         patches.append(("rwreg_auth_gate_read @0x40010fb0", 0x40010fb0, ret_r1))
         patches.append(("rwreg_auth_gate_write @0x40010fb8", 0x40010fb8, ret_r1))
-
-        patches = []
 
         # 1. cust_security_verify_sec_policy: MTK-side wrapper called by the
         #    CMD:SECURITY-SET-FLASH-POLICY handler. It calls
