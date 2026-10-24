@@ -645,6 +645,15 @@ class DAXML(metaclass=LogBase):
                     bytestowrite -= packet_length
                 if raw:
                     self.ack()
+                # jaq H1 debug: dump pending RX buffer state before waiting for
+                # CMD:END — a stale progress/READY packet in rxleft would desync
+                # get_command_result() and hang here forever.
+                try:
+                    _rx = getattr(self.mtk.port.cdc, "rxleft", None)
+                    self.info(f"[DEBUG] upload finished (raw={raw}), rxleft="
+                              f"{bytes(_rx).hex() if _rx else None}")
+                except Exception:
+                    self.info("[DEBUG] upload finished (rxleft n/a)")
                 cmd, result = self.get_command_result()
                 self.ack()
                 if display:
@@ -985,11 +994,12 @@ class DAXML(metaclass=LogBase):
             if _os.environ.get("OPLUS_PATCH_ERASE_KILL", "0") == "1":
                 patches.append(("WRITE-FLASH erase-call 0x4000325c -> MOV R0,#0",
                                 0x4000325c, b"\x00\x00\xa0\xe3"))
-                # WRITE-PARTITION erase-gate: 0x40002214 beq -> erase path
-                # (0x400022a8) when name != PRELOADER. NOP the BEQ (proven
-                # bytes 2300000a; re-writeflash-scrubber.md §5 hardening).
-                patches.append(("WRITE-PARTITION erase-gate 0x40002214 -> NOP",
-                                0x40002214, b"\x00\x00\xa0\xe1"))
+                # NOTE: the WRITE-PARTITION erase-gate NOP (0x40002214) is
+                # DELIBERATELY NOT APPLIED (jaq hypothesis 2): pre_erase=NO in
+                # the XML is the protocol-clean skip-erase (0x40002200 bne
+                # 0x40002218), and NOPing the BEQ was suspected of corrupting
+                # the handler epilogue. Only the WRITE-FLASH erase-call patch
+                # stays.
             else:
                 self.info("WRITE-FLASH erase-kill patch skipped "
                           "(set OPLUS_PATCH_ERASE_KILL=1; target 0x4000325c)")
