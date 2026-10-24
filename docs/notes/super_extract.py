@@ -109,6 +109,24 @@ def parse_lp(rd: Reader):
             hits.append(off)
         off += 0x1000
     print(f"[*] LP header candidates: {[hex(x) for x in hits]}")
+    if args.dump_hdr and hits:
+        h = hits[0]
+        hdr = rd.read(h, 0x100)
+        print(f"[*] raw header @{h:#x}:")
+        for i in range(0, 0x80, 16):
+            print(f"    {i:#04x}: {hdr[i:i+16].hex()}")
+        dw = struct.unpack_from("<32I", hdr, 0)
+        print("[*] dwords:", " ".join(f"{v:#x}" for v in dw))
+        print(f"    magic={dw[0]:#x} v={dw[1]&0xffff}.{dw[1]>>16} "
+              f"hdr_size={dw[2]:#x} hdr_csum={dw[3]:#x} tables_size={dw[4]:#x} "
+              f"tables_csum={dw[5]:#x}")
+        for base in (6, 5, 7, 8):
+            try:
+                print(f"    desc@{base*4:#x}: parts={struct.unpack_from('<III', hdr, base*4)} "
+                      f"extents={struct.unpack_from('<III', hdr, base*4+12)}")
+            except struct.error:
+                pass
+        return 0
 
     chosen = None
     for hoff in hits:
@@ -271,6 +289,7 @@ def main():
     parser.add_argument('--out', default='')
     parser.add_argument('--list', action='store_true')
     parser.add_argument('--scan', action='store_true')
+    parser.add_argument('--dump-hdr', action='store_true')
     sub = parser.add_subparsers(dest='cmd', required=False)
     sub.add_parser('custom')
     args = parser.parse_args(sys.argv[1:] + ['custom'])
