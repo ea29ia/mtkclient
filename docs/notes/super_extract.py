@@ -218,6 +218,7 @@ def main():
     parser.add_argument('--path', default='/bin/init')
     parser.add_argument('--out', default='')
     parser.add_argument('--list', action='store_true')
+    parser.add_argument('--scan', action='store_true')
     sub = parser.add_subparsers(dest='cmd', required=False)
     sub.add_parser('custom')
     args = parser.parse_args(sys.argv[1:] + ['custom'])
@@ -237,6 +238,25 @@ def main():
     print(f"[*] super: LBA {sp.sector:#x} base {sbase:#x} size {sp.sectors * ss:#x}")
 
     rd = Reader(loader, sbase)
+    if args.scan:
+        head = rd.read(0, 0x1000)
+        print("[*] first 0x100 bytes:", head[:0x100].hex())
+        print("[*] ascii:", ''.join(chr(c) if 32 <= c < 127 else '.' for c in head[:128]))
+        for name, magic in (("LP_GEOM", 0x616C4467), ("LP_HDR", 0x414C5030),
+                            ("EXT4", 0xEF53)):
+            hits = []
+            step = 0x1000 if name != "LP_HDR" else 0x1000
+            for off in range(0, 0x4000000, step):
+                blk = rd.read(off if name != "EXT4" else off + 1024, 8)
+                if len(blk) < 8:
+                    break
+                v = struct.unpack_from("<I", blk, 0)[0]
+                if v == magic or (name == "EXT4" and struct.unpack_from("<H", blk, 0x38 if len(blk) > 0x38 else 0)[0] == magic):
+                    hits.append(off)
+                if len(hits) >= 5:
+                    break
+            print(f"[*] scan {name}: {[hex(h) for h in hits]}")
+        return 0
     parts, exts = parse_lp(rd)
     segs = part_map(parts, exts, args.part)
     if not segs:
