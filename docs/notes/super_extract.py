@@ -85,42 +85,45 @@ def parse_lp(rd: Reader):
     print(f"[*] LP geometry @{geo_off:#x}: max={meta_max:#x} slots={slot_count} "
           f"block={lb}")
 
-    hdr_off = _scan_magic(rd, geo_off, geo_off + 0x40000, LP_HDR_MAGIC)
-    if hdr_off is None:
-        raise ValueError("LP metadata header magic not found")
-    hdr = rd.read(hdr_off, max(0x100, min(meta_max, 0x10000)))
-    m, major, minor, hs = struct.unpack_from("<IHHI", hdr, 0)
-    if m != LP_HDR_MAGIC:
-        raise ValueError(f"bad LP header magic {m:#x}")
-    print(f"[*] LP header @{hdr_off:#x} v{major}.{minor} hdr={hs}")
-    print(f"[*] header raw[0:0x60]: {hdr[:0x60].hex()}")
-
-    def desc(off):
-        return struct.unpack_from("<III", hdr, off)
-
-    # The 4 descriptors are 12 bytes each (offset, num_entries, entry_size).
-    # The base can shift by a few bytes between liblp revisions, so pick the
-    # candidate whose entry sizes and counts are sane.
-    chosen = None
-    for cand in range(16, 40, 2):
-        po, pn, pe = desc(cand)
-        eo, en, ee = desc(cand + 12)
-        if 16 <= cand <= 32 and pe == 52 and ee == 24 and 0 < pn < 100 and 0 < en < 10000 \
-                and po < len(hdr) and eo < len(hdr):
-            chosen = (cand, po, pn, eo, en)
-            break
-    if chosen is None:
-        print("[!] descriptor layout not recognised; candidates:")
-        for cand in range(16, 40, 4):
+    def try_parse(hdr):
+        if len(hdr) < 0x60 or struct.unpack_from("<I", hdr, 0)[0] != LP_HDR_MAGIC:
+            return None
+        for cand in (24, 20, 28, 32):
             try:
-                print(f"    @{cand:#04x}: {desc(cand)} / {desc(cand + 12)}")
-            except Exception:
-                pass
-        raise ValueError("cannot parse LP table descriptors")
-    base_off, parts_off, parts_num, ext_off, ext_num = chosen
-    print(f"[*] tables @0x{base_off:x}: parts(off={parts_off} n={parts_num}) "
+                po, pn, pe = struct.unpack_from("<III", hdr, cand)
+                eo, en, ee = struct.unpack_from("<III", hdr, cand + 12)
+            except struct.error:
+                continue
+            if pe == 52 and ee == 24 and 0 < pn < 200 and 0 < en < 100000 \
+                    and po + pn * 52 <= len(hdr) and eo + en * 24 <= len(hdr):
+                return (cand, po, pn, eo, en)
+        return None
+
+    hits = []
+    off = geo_off
+    while off < geo_off + 0x100000:
+        blk = rd.read(off, 0x1000)
+        if len(blk) < 0x1000:
+            break
+        if struct.unpack_from("<I", blk, 0)[0] == LP_HDR_MAGIC:
+            hits.append(off)
+        off += 0x1000
+    print(f"[*] LP header candidates: {[hex(x) for x in hits]}")
+
+    chosen = None
+    for hoff in hits:
+        hdr = rd.read(hoff, min(meta_max, 0x20000))
+        r = try_parse(hdr)
+        print(f"    @{hoff:#x}: v{struct.unpack_from('<HH', hdr, 4)} "
+              f"hdr_size={struct.unpack_from('<I', hdr, 8)[0]} -> {r}")
+        if r and chosen is None:
+            chosen = (hoff, hdr, r)
+    if chosen is None:
+        raise ValueError("no parseable LP metadata header found")
+    hdr_off, hdr, (base_off, parts_off, parts_num, ext_off, ext_num) = chosen
+    print(f"[*] using header @{hdr_off:#x}: parts(off={parts_off} n={parts_num}) "
           f"extents(off={ext_off} n={ext_num})")
-    base = base_off
+
     parts = []
     for i in range(parts_num):
         e = hdr[parts_off + i * 52: parts_off + (i + 1) * 52]
