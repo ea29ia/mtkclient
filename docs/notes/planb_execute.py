@@ -100,9 +100,13 @@ def main():
               "rerun with PLAN_B_GO=1 to write")
         return 0
 
-    # --- write (payload as-is, 512 B, pre_erase=NO in the XML now) ---
-    wd = bytes(writedata)
-    print(f"[!] WRITING seccfg unlock ({len(wd)} B WRITE-PARTITION, pre_erase=NO). Ctrl-C to abort.")
+    # --- write (payload padded to UFS block size 0x1000; pre_erase=NO in XML) ---
+    # UFS block = 0x1000: unaligned transfer length hangs the DA data phase.
+    BS = 0x1000
+    pad = (-len(writedata)) % BS
+    wd = bytes(writedata) + bytes(pad)
+    print(f"[!] WRITING seccfg unlock ({len(wd)} B = payload + pad to UFS block {BS:#x}, "
+          f"WRITE-PARTITION pre_erase=NO). Ctrl-C to abort.")
     time.sleep(5)
     ok, msg = xmlft.seccfg_write_partition(seccfg, wd)
     if not ok:

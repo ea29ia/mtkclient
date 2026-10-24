@@ -17,26 +17,26 @@ loader = mtk.daloader
 data, gpt = loader.get_gpt(parttype="user")
 ss = gpt.sectorsize
 parts = {p.name.lower(): p for p in gpt.partentries}
+print(f"[*] gpt.sectorsize = {ss:#x} (UFS block is 0x1000 - ALL transfers must be 0x1000-aligned)")
 
 def tryread(label, addr, ln):
     try:
         r = loader.readflash(addr=addr, length=ln, filename="", parttype="user", display=False)
         r = r[0] if isinstance(r, tuple) else r
         if r:
-            print(f"[+] {label} @ {addr:#x} len={ln:#x}: OK ({len(r)} B) head={bytes(r[:16]).hex()}")
+            print(f"[+] {label} @ {addr:#x} len={ln:#x}: OK ({len(r)} B) head={bytes(r[:28]).hex()}")
         else:
             print(f"[-] {label} @ {addr:#x} len={ln:#x}: EMPTY")
     except Exception as e:
         print(f"[-] {label} @ {addr:#x} len={ln:#x}: EXC {e!r}")
 
-# scope test: does ONLY seccfg hang, or all reads beyond GPT?
+# ALL lengths 0x1000-aligned (UFS block size lesson)
 for name in ("para", "misc", "frp", "proinfo", "seccfg"):
     p = parts.get(name)
     if p:
-        tryread(name, p.sector * ss, 0x200)
+        tryread(name, p.sector * ss, 0x1000)
 sc = parts["seccfg"]
-tryread("seccfg-0x1000(before)", (sc.sector - 4) * ss, 0x1000)
-tryread("seccfg-1st-0x200", sc.sector * ss, 0x200)
-tryread("seccfg-mid-0x200", (sc.sector + (sc.sectors // 2)) * ss, 0x200)
-tryread("seccfg-end-0x200", (sc.sector + sc.sectors - 4) * ss, 0x1000)
+tryread("seccfg-1st-0x1000", sc.sector * ss, 0x1000)
+tryread("seccfg-mid-0x1000", (sc.sector + (sc.sectors // 2)) * ss, 0x1000)
+tryread("seccfg-end-0x1000", (sc.sector + sc.sectors - 1) * ss, 0x1000)
 print("[*] scope test done")
