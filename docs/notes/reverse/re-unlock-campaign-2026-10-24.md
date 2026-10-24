@@ -379,3 +379,43 @@ diagnosed — could be the power-off/boot sequence, a preloader-side loop, or a
 side effect of the RPMB write counter. Next step: full power cycle, then
 `run_unlock_state_check.sh` (read-only) to see whether
 `seccfg=3` + `mirror locked=0` survived.
+
+---
+
+## 4quater. UPDATE 2026-10-24 21:55 — unlock PERSISTED, but no Android (test12)
+
+`./run_unlock_state_check.sh` (log `/home/musin/test12`), device in preloader:
+
+```
+[*] seccfg: … lock_state=3 dm_verity=0x0 sboot=0x0 end=0x45454545
+    head md5=198003b5d7a4d8d0c6604c347e658c1d
+    vendor marker @0x200: 90790922000000010000000000000000
+[*] seccfg full: 0x800000 B md5=a75ce366b6574b4a0ebb27568977bc79 (MODIFIED vs stock)
+[*] mirror: sboot=0 dev_info=1 bootmode=0 locked=0 aux=0x0 hash=VALID
+    md5=11a2d0c1cb998bae544ea78ae05c0d42
+[+] UNLOCK PERSISTED — seccfg=3 and the mirror says unlocked.
+```
+
+**The unlock now survives a reboot** — this is the first persistent unlocked state
+on this unit. Two observations:
+
+1. **The mirror is byte-identical to the block we wrote** (`11a2d0c1…`), i.e. LK
+   did not overwrite it and DC did not re-lock. The RPMB write was legitimate and
+   stable.
+2. **The `seccfg` +0x200 vendor marker is back** (`9079092200000001`) although our
+   8 MB payload zeroed it — while the header stayed our `lock=3` record. So there
+   is a separate actor that rewrites the `0x200` area (preloader or LK's NV
+   initialiser), and it does **not** touch the main record. That answers Q2 in
+   the direction "partial, marker-only restore", not "full seccfg restore".
+
+After the reboot the phone did not present the Android USB composite
+(`22d9:2046`). dmesg shows only `22d9:0006` (preloader) with a ~110 s cycle,
+which is also what an **off** phone with `off-mode-charge=1` looks like
+(`para` ENV contains `off-mode-charge=1`; our early `para` test also dropped the
+companion `dm_ota=1` entry — harmless but noted). So "no Android" is not yet
+proven: the phone may simply be powered off / in charging mode.
+
+Next diagnostic: `watch_usb.sh` (logs USB changes for 240 s) and a real power-on
+with the cable connected; then, if it still ends in preloader, restore the stock
+state (`mirror locked=1` + `seccfg lock=4`) to re-establish the Android baseline
+before trying a different unlock variant.
