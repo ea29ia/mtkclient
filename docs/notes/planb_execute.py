@@ -100,9 +100,9 @@ def main():
               "rerun with PLAN_B_GO=1 to write")
         return 0
 
-    # --- write (full-size padded) ---
-    wd = bytes(bytearray(writedata) + bytes(fullsize - len(writedata)))
-    print("[!] WRITING seccfg unlock (full-size WRITE-PARTITION). Ctrl-C to abort.")
+    # --- write (payload as-is, 512 B, pre_erase=NO in the XML now) ---
+    wd = bytes(writedata)
+    print(f"[!] WRITING seccfg unlock ({len(wd)} B WRITE-PARTITION, pre_erase=NO). Ctrl-C to abort.")
     time.sleep(5)
     ok, msg = xmlft.seccfg_write_partition(seccfg, wd)
     if not ok:

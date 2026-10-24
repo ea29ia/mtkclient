@@ -447,6 +447,10 @@ class XMLCmd(metaclass=LogBase):
         content = {
             "arg": [
                 f"<partition>{partition}</partition>",
+                # pre_erase present with value != "YES" => DA skips the erase
+                # phase entirely (0x40002200 bne 0x40002218) - program-only
+                # write, the protocol-supported way to avoid the seccfg scrub
+                f"<pre_erase>NO</pre_erase>",
                 f"<source_file>MEM://{hex(mem_offset)}:{hex(mem_length)}</source_file>"
             ]
         }

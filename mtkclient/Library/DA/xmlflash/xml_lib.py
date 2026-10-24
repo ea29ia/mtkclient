@@ -1008,6 +1008,31 @@ class DAXML(metaclass=LogBase):
             else:
                 self.info("HACC-hang NOPs skipped "
                           "(set OPLUS_PATCH_HACC_HANG=1; targets 0x40039848/0x400397e0/0x40034b18/0x4000c210)")
+            # Make the seccfg reader/validator fully HACC-free (ai3 directive,
+            # verified against disasm). The reader validates each record via
+            #   0x40034f74/0x40034fc8: bl 0x4003a2d4 (HACC decrypt of 0x1c hdr)
+            #   0x40034f7c/0x40034fd0: bl 0x40035030 (in-place HACC trampoline)
+            # 0x40035030 has exactly two callers (both in the reader) and ALWAYS
+            # tail-calls 0x40034840 (in-place HACC) - stubbing it to BX LR
+            # removes HACC use #2. NOPing the two decrypt BLs removes use #1.
+            # Both results are dead weight: the digest-accept patch
+            # (0x40034f94 -> B) forces the main-record-valid branch regardless
+            # of the memcmp. With these patches seccfg reads/writes no longer
+            # touch 0x1000A008 at all - required if the HACC domain is wedged.
+            if _os.environ.get("OPLUS_PATCH_ANTICLONE", "0") == "1":
+                patches.append(("SEC seccfg in-place HACC trampoline 0x40035030 -> BX LR",
+                                0x40035030, b"\x1e\xff\x2f\xe1"))
+            else:
+                self.info("ANTICLONE stub skipped "
+                          "(set OPLUS_PATCH_ANTICLONE=1; target 0x40035030)")
+            if _os.environ.get("OPLUS_PATCH_HACC_READ", "0") == "1":
+                patches.append(("SEC seccfg reader decrypt BL 0x40034f74 -> NOP",
+                                0x40034f74, b"\x00\x00\xa0\xe1"))
+                patches.append(("SEC seccfg reader decrypt BL 0x40034fc8 -> NOP",
+                                0x40034fc8, b"\x00\x00\xa0\xe1"))
+            else:
+                self.info("HACC_READ NOPs skipped "
+                          "(set OPLUS_PATCH_HACC_READ=1; targets 0x40034f74/0x40034fc8)")
             # The deny that actually fires for WRITE-FLASH(seccfg) is INSIDE the
             # WRITE-FLASH handler (0x40002e60) at 0x400031d4: after the policy
             # parse (BL 0x4002cf68) it checks TWO flag bytes -
