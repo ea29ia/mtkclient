@@ -121,7 +121,8 @@ def main():
     t0 = time.time()
     md_ok = False
     try:
-        md_ok = loader.formatflash(addr=mbase, length=mfull, parttype="user", display=True)
+        md_ok = loader.formatflash(addr=mbase, length=mfull, partitionname=mp.name,
+                                   parttype="user", display=True)
     except Exception as e:  # noqa: BLE001
         print(f"[!] metadata erase exception: {e!r}")
     print(f"[*] metadata erase -> {md_ok} ({time.time() - t0:.1f}s)")
@@ -132,7 +133,8 @@ def main():
     t0 = time.time()
     ud_ok = False
     try:
-        ud_ok = loader.formatflash(addr=ubase, length=ud_len, parttype="user", display=True)
+        ud_ok = loader.formatflash(addr=ubase, length=ud_len, partitionname=up.name,
+                                   parttype="user", display=True)
     except Exception as e:  # noqa: BLE001
         print(f"[!] userdata erase exception: {e!r}")
     print(f"[*] userdata erase -> {ud_ok} ({time.time() - t0:.1f}s)")
