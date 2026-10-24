@@ -799,6 +799,14 @@ class DAXML(metaclass=LogBase):
         at = ArmTools(da2, da2address)
 
         ret_r0 = b"\x00\x00\xA0\xE3\x1E\xFF\x2F\xE1"  # MOV R0, #0 ; BX LR
+        ret_r1 = b"\x01\x00\xA0\xE3\x1E\xFF\x2F\xE1"  # MOV R0, #1 ; BX LR
+
+        # 0. READ/WRITE-REGISTER auth gates (proven re-da2-readregister.md):
+        #    fixed stubs at 0x40010fb0 / 0x40010fb8 return 0 -> every
+        #    READ/WRITE-REGISTER answers "R/W on this address is forbidden."
+        #    Success requires !=0 -> patch both to MOV R0,#1.
+        patches.append(("rwreg_auth_gate_read @0x40010fb0", 0x40010fb0, ret_r1))
+        patches.append(("rwreg_auth_gate_write @0x40010fb8", 0x40010fb8, ret_r1))
 
         patches = []
 
