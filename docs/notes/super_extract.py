@@ -60,34 +60,61 @@ class Reader:
         return bytes(out)
 
 
+def _scan_magic(rd, start, end, magic, step=0x1000):
+    off = start
+    while off < end:
+        blk = rd.read(off, 0x1000)
+        if len(blk) < 0x1000:
+            return None
+        if struct.unpack_from("<I", blk, 0)[0] == magic:
+            return off
+        off += step
+    return None
+
+
 def parse_lp(rd: Reader):
-    geo = rd.read(0, 52)
+    """This device's LP container starts at 0x1000 inside `super`
+    (geometry @0x1000, metadata header @0x3000), so locate the magics instead
+    of assuming offset 0."""
+    geo_off = _scan_magic(rd, 0, 0x20000, LP_GEOM_MAGIC)
+    if geo_off is None:
+        raise ValueError("LP geometry magic not found in the first 128 KB")
+    geo = rd.read(geo_off, 52)
     magic, size = struct.unpack_from("<II", geo, 0)
-    if magic != LP_GEOM_MAGIC:
-        raise ValueError(f"bad LP geometry magic {magic:#x}")
     meta_max, slot_count, lb = struct.unpack_from("<III", geo, 40)
-    print(f"[*] LP geometry: max={meta_max:#x} slots={slot_count} block={lb}")
-    hdr = rd.read(4096, meta_max)
-    m, major, minor, hsize = struct.unpack_from("<IHHI", hdr, 0)
+    print(f"[*] LP geometry @{geo_off:#x}: max={meta_max:#x} slots={slot_count} "
+          f"block={lb}")
+
+    hdr_off = _scan_magic(rd, geo_off, geo_off + 0x40000, LP_HDR_MAGIC)
+    if hdr_off is None:
+        raise ValueError("LP metadata header magic not found")
+    hsize = struct.unpack_from("<I", rd.read(hdr_off, 8), 4)[0]
+    hdr = rd.read(hdr_off, max(0x100, min(meta_max, 0x10000)))
+    m, major, minor, hs = struct.unpack_from("<IHHI", hdr, 0)
     if m != LP_HDR_MAGIC:
         raise ValueError(f"bad LP header magic {m:#x}")
     tables_size = struct.unpack_from("<I", hdr, 16)[0]
     parts_off, parts_num, ext_off, ext_num, grp_off, grp_num, bdev_off, bdev_num = \
         struct.unpack_from("<8I", hdr, 24)
-    print(f"[*] LP header v{major}.{minor} hdr={hsize} tables={tables_size:#x} "
+    print(f"[*] LP header @{hdr_off:#x} v{major}.{minor} hdr={hs} tables={tables_size:#x} "
           f"parts={parts_num} extents={ext_num}")
-    base = 4096 + hsize
+    base = hs
     parts = []
     for i in range(parts_num):
         e = hdr[base + parts_off + i * 52: base + parts_off + (i + 1) * 52]
+        if len(e) < 52:
+            break
         name = e[:36].split(b"\x00")[0].decode()
         attr, first_ext, num_ext, grp = struct.unpack_from("<IIII", e, 36)
         parts.append(dict(name=name, first_ext=first_ext, num_ext=num_ext))
     exts = []
     for i in range(ext_num):
         e = hdr[base + ext_off + i * 24: base + ext_off + (i + 1) * 24]
+        if len(e) < 24:
+            break
         num_sectors, ttype, tdata, tsrc = struct.unpack("<QIQI", e)
         exts.append(dict(num_sectors=num_sectors, type=ttype, data=tdata))
+    print("[*] partitions:", ", ".join(p["name"] for p in parts))
     return parts, exts
 
 
