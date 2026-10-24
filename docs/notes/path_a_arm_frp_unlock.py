@@ -77,7 +77,6 @@ def main():
 
     # sector size comes back from the parsed GPT object
     sectorsize = getattr(gpt, "sectorsize", 4096) or 4096
-
     frp = None
     for part in gpt.partentries:
         if part.name.lower() == "frp":
@@ -95,8 +94,9 @@ def main():
     print(f"[+] frp: LBA {frp.sector:#x}..{frp.sector + frp.sectors:#x} "
           f"size {size:#x}, tail offset {tail_off:#x}")
 
-    tail = loader.xflash.readflash(
+    tail = loader.readflash(
         addr=tail_off, length=4, filename="", parttype="user", display=False)
+    tail = tail[0] if isinstance(tail, tuple) else tail
     if not tail or len(tail) != 4:
         print("[-] frp tail read failed — abort (nothing written)")
         pass  # port closes on process exit
@@ -121,10 +121,10 @@ def main():
         full = bytearray(size)
         full[-4:] = data
         # reuse the proven raw named-partition writer from the seccfg path
-        xmlft = loader.xmlft if hasattr(loader, "xmlft") else None
+        xmlft = getattr(loader, "xmlft", None)
         if xmlft is None:
             from mtkclient.Library.DA.xmlflash.extension.v6 import XmlFlashExt
-            xmlft = loader.xflash  # v6 seccfg_write_partition lives on the xflash ext
+            xmlft = XmlFlashExt(loader.mtk, loader.da, loader.loglevel)
         ok, msg = False, "no writer"
         try:
             ok, msg = xmlft.seccfg_write_partition(frp, bytes(full))
@@ -143,8 +143,9 @@ def main():
             return 1
 
     # verify
-    tail2 = loader.xflash.readflash(
+    tail2 = loader.readflash(
         addr=tail_off, length=4, filename="", parttype="user", display=False)
+    tail2 = tail2[0] if isinstance(tail2, tuple) else tail2
     val2 = int.from_bytes(tail2, "little") if tail2 and len(tail2) == 4 else -1
     if val2 == MARKER:
         print(f"[+] VERIFY OK: frp tail now {val2:#010x} — gate ARMED")
