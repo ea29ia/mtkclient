@@ -103,6 +103,13 @@ def open_endpoints(dev):
 
 
 GONE = {"flag": False}  # set when the port dies (EIO) — device rebooted
+NOISE = b"READY"  # OPLUS preloader CDC bulk-IN spam (proven live 2026-10-24)
+
+
+def strip_noise(data):
+    """Remove READY spam; return (clean_bytes, noise_bytes_count)."""
+    clean = data.replace(NOISE, b"")
+    return clean, len(data) - len(clean)
 
 
 def read_any(ep_in, timeout_ms):
@@ -118,20 +125,40 @@ def read_any(ep_in, timeout_ms):
         raise
 
 
-def drain(ep_in, total_ms=3000):
-    """Collect everything the device sends for total_ms (reactive only)."""
+def drain(ep_in, total_ms=3000, ignore_noise=False):
+    """Collect everything the device sends for total_ms (reactive only).
+
+    With ignore_noise, READY spam is neither counted as data nor as an
+    end-of-burst marker — keep reading until the full window expires
+    (the real token response may be buried in/after READY spam).
+    """
     out = b""
+    noise = 0
+    idle_after_data = 0
     deadline = time.time() + total_ms / 1000
     while time.time() < deadline:
         chunk = read_any(ep_in, 300)
         if chunk:
-            out += chunk
+            idle_after_data = 0
+            if ignore_noise:
+                c, n = strip_noise(out + chunk)
+                out, noise = c, noise + n
+                # restart window a bit when only spam arrives? no — honor it
+                if not out and n:
+                    # pure spam so far — keep listening until deadline
+                    pass
+            else:
+                out += chunk
         elif GONE["flag"]:
             log("[i] port died (EIO) — preloader rebooted, stopping read")
             break
         else:
-            if out:  # one idle gap after data = end of burst
-                break
+            if out and not ignore_noise:
+                idle_after_data += 300
+                if idle_after_data >= 700:  # end of burst
+                    break
+    if ignore_noise and noise:
+        log(f"[*] filtered {noise} B of READY spam")
     return out
 
 
@@ -139,32 +166,44 @@ def printable(b):
     return "".join(chr(c) if 32 <= c < 127 else f"\\x{c:02x}" for c in b)
 
 
-def probe(token, order, eps, dev_addr):
+def probe(token, mode, eps, dev_addr):
+    """mode: 'combo' (0xA0+token in one write), 'split' (0xA0, pause, token),
+    'raw' (token only)."""
     ep_out, ep_in, _ = eps
-    log(f"=== probe token={token!r} order={order} ===")
-    # fresh device each probe: device reboots after failed handshake
+    log(f"=== probe token={token!r} mode={mode} ===")
+    tok = token.encode()
     try:
-        if order == "a0_first":
-            payload = b"\xa0" + token.encode()
-        else:
-            payload = token.encode() + b"\xa0"
-        ep_out.write(payload, timeout=2000)
-        log(f"sent {len(payload)} B: {printable(payload)}")
+        if mode == "combo":
+            payload = b"\xa0" + tok
+            ep_out.write(payload, timeout=2000)
+            log(f"sent {len(payload)} B: {printable(payload)}")
+        elif mode == "split":
+            ep_out.write(b"\xa0", timeout=2000)
+            log("sent sync 0xA0")
+            time.sleep(0.15)
+            ep_out.write(tok, timeout=2000)
+            log(f"sent token {len(tok)} B: {token}")
+        else:  # raw
+            ep_out.write(tok, timeout=2000)
+            log(f"sent {len(tok)} B: {token}")
     except Exception as e:
         log(f"[-] write failed: {e!r}")
         return None
-    resp = drain(ep_in, 11000)  # preloader follow-up timeouts are 8/10 s
+    resp = drain(ep_in, 11000, ignore_noise=True)  # full 8/10 s timeout window
     if resp:
         log(f"[+] RESPONSE {len(resp)} B: {printable(resp)}")
-        for expect, _, gated in [(t, e, g) for t, e, g in TOKENS]:
+        for expect, _, gated in TOKENS:
             if expect.encode() in resp:
                 log(f"[+] contains {expect!r} (gated={gated})")
+        for magic in (b"TOOBTSAF", b"AT+OK", b"forbidden", b"ATEM", b"DISCONNECT"):
+            if magic in resp:
+                log(f"[!!!] MATCH {magic!r} — handshake hit")
     else:
-        log("[-] no response in 11 s (device will reboot in ~5 s)")
+        log("[-] no meaningful response in 11 s (device will reboot in ~5 s)")
     return resp
 
 
-def one_cycle(only_token=None, order_mode="both"):
+def one_cycle(only_token=None, order_mode=None):
     if os.environ.get("PLANE_WAIT", "1") == "1" and not wait_fresh():
         return False
     dev = find_device()
@@ -179,7 +218,7 @@ def one_cycle(only_token=None, order_mode="both"):
         return False
     # passive listen first: maybe the preloader sends 0xA0 to us (sync direction)
     log("[*] passive listen 3 s (does the preloader send 0xA0 first?)")
-    pre = drain(eps[1], 3000)
+    pre = drain(eps[1], 3000, ignore_noise=True)
     if pre:
         log(f"[!] unsolicited from device {len(pre)} B: {printable(pre)}")
         if b"\xa0" in pre:
@@ -188,18 +227,18 @@ def one_cycle(only_token=None, order_mode="both"):
         log("[i] device rebooted during passive listen — cycle ends, re-arm")
         return False
     tokens = [only_token] if only_token else [t for t, _, _ in TOKENS]
+    modes = list(order_mode) if order_mode else ["combo", "split", "raw"]
     results = {}
     for tok in tokens:
-        if GONE["flag"]:
-            log("[i] device gone — skipping remaining probes")
-            break
-        GONE["flag"] = False  # reset per probe
-        orders = ["a0_first", "token_first"] if order_mode == "both" else [order_mode]
-        for od in orders:
-            r = probe(tok, od, eps, dev.address)
-            results[f"{tok}/{od}"] = r
+        for m in modes:
+            if GONE["flag"]:
+                log("[i] device gone — skipping remaining probes")
+                break
+            GONE["flag"] = False  # reset per probe
+            r = probe(tok, m, eps, dev.address)
+            results[f"{tok}/{m}"] = r
             if r:
-                break  # got a response for this token — skip other order
+                break  # got a response for this token — next token
     log("=== CYCLE SUMMARY ===")
     for k, v in results.items():
         log(f"  {k}: {'RESP ' + printable(v) if v else 'no response'}")
@@ -214,7 +253,8 @@ def main():
     ap.add_argument("--loop", action="store_true", help="keep re-arming and probing")
     ap.add_argument("--token", default=None, help="probe a single token")
     ap.add_argument("--only", action="store_true", help="with --token: no control probes")
-    ap.add_argument("--order", choices=["a0_first", "token_first", "both"], default="both")
+    ap.add_argument("--order", choices=["combo", "split", "raw"], default=None,
+                    help="force a single send mode (default: combo→split→raw)")
     ap.add_argument("--no-wait", action="store_true", help="device already in VCOM")
     a = ap.parse_args()
     if a.no_wait:
