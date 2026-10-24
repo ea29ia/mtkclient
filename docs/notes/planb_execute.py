@@ -30,7 +30,18 @@ os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 GO = os.environ.get("PLAN_B_GO", "0") == "1"
 
 
+def _sigint_trace(sig, frame):
+    # Ctrl-C during a hang: dump the exact stack so we can see WHICH
+    # protocol call is blocking (host-wait vs data-phase etc).
+    import signal, traceback
+    print("\n[] STACK TRACE ON HANG:")
+    traceback.print_stack(frame)
+    sys.exit(0)
+
+
 def main():
+    import signal
+    signal.signal(signal.SIGINT, _sigint_trace)
     import argparse
     import mtk as mtk_cli
     parser = mtk_cli.create_base_parser()
