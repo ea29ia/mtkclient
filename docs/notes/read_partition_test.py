@@ -36,11 +36,8 @@ def read_partition_by_name(name, fn="/tmp/seccfg_rp.bin"):
     print(f"[-] READ-PARTITION tail: {scmd!r} {sresult!r}")
     return None
 
-print("[*] A: READ-FLASH 0x200 (standard path)...")
-r1 = loader.readflash(addr=seccfg.sector*ss, length=0x200, filename="",
-                      parttype="user", display=False)
-r1 = r1[0] if isinstance(r1, tuple) else r1
-print(f"[*] A result: {'OK ' + bytes(r1[:28]).hex() if r1 else 'EMPTY'}")
+# Test A (READ-FLASH) skipped per directive — straight to Test B.
+r1 = None
 
 print("[*] B: READ-PARTITION by name (ai3 path)...")
 r2 = read_partition_by_name("seccfg")
