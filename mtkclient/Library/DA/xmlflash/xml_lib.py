@@ -486,19 +486,23 @@ class DAXML(metaclass=LogBase):
         return None
 
     def read_register(self, addr):
+        # READ-REGISTER responds with CMD:UPLOAD-FILE (UpFile) + OK@0x4 +
+        # 4 raw bytes — NOT the plain "OK" ack that noack=False expects.
+        # Calling send_command with noack=False garbles the flow (the retry
+        # re-sends the XML while DA waits for upload data → DA logs
+        # "Required XML node path not found"). Use noack=True + direct
+        # result fetch, mirroring get_hw_info.
         tmp = self.cmd.cmd_read_reg(base_address=addr)
-        if self.send_command(tmp):
-            cmd, data = self.get_command_result()
-            if cmd != '':
-                return False
-            # CMD:END
-            scmd, sresult = self.get_command_result()
-            self.ack()
-            if sresult == "OK":
-                tcmd, tresult = self.get_command_result()
-                if tresult == "START":
-                    return data
+        if not self.send_command(tmp, noack=True):
             return None
+        cmd, result = self.get_command_result()
+        if not isinstance(result, UpFile):
+            return None
+        data = self.download(result)
+        scmd, sresult = self.get_command_result()
+        if sresult == "START":
+            return data
+        return None
 
     def get_command_result(self):
         data = self.get_response()
