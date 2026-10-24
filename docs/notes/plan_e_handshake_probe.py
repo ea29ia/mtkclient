@@ -311,7 +311,6 @@ def one_cycle(only_token=None, order_mode=None):
         # with boot_mode=0x63 (FASTBOOT) alive in SRAM (0x2F4264). Release
         # the USB and let the DA session attach on this very instance —
         # its shutdown(FASTBOOT) path is the downstream consumer of 0x63.
-        watch_reenumerate(seconds=5)
         try:
             usb.util.dispose_resources(dev)
         except Exception:
@@ -320,6 +319,9 @@ def one_cycle(only_token=None, order_mode=None):
         log("    ./run_reboot_fastboot.sh     (it connects to THIS VCOM)")
         log("[*] holding the port open 60 s to keep the window visible...")
         time.sleep(60)
+        log("[i] exiting — rerun the probe for the next hit (no auto-retry "
+            "on a hit: the next cycle would race the live window)")
+        return True
     else:
         save_state(idx + 1)
     log("=== CYCLE SUMMARY ===")
