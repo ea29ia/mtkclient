@@ -25,17 +25,24 @@ RGU = 0x10007024
 
 
 def read_word(loader):
-    data = loader.xmlft.custom_read(RGU, 4)
-    if not data or len(data) < 4:
-        print(f"[dbg] custom_read returned {data!r}")
+    data = loader.xmlft.custom_readregister(RGU, 1)
+    if isinstance(data, int):
+        print(f"[dbg] custom_readregister -> {data:#010x}")
+        return data
+    if data is None:
         return None
-    print(f"[dbg] custom_read: {bytes(data).hex()}")
-    return int.from_bytes(bytes(data[:4]), "little")
+    if isinstance(data, list):
+        print(f"[dbg] custom_readregister -> {[hex(v) for v in data]}")
+        return data[0]
+    print(f"[dbg] custom_readregister returned {data!r}")
+    return None
 
 
 def write_word(loader, val):
-    ok = loader.xmlft.custom_write(RGU, val.to_bytes(4, "little"))
-    print(f"[dbg] custom_write -> {ok}")
+    # CUSTOMREGW performs a true 32-bit STR (APB-safe). CUSTOMMEMW's
+    # byte-wise copy is silently dropped by the APB bridge (ai.txt §1).
+    ok = loader.xmlft.custom_writeregister(RGU, val)
+    print(f"[dbg] custom_writeregister -> {ok}")
     return ok
 
 
@@ -79,8 +86,12 @@ def main():
     newval = (val & ~0xF) | 3
     ok = write_word(loader, newval)
     if not ok:
-        print("[-] custom_write failed")
-        return 1
+        print("[-] custom_writeregister failed — falling back to EXP-CALL-FUNC nibble-setter 0x4002a520")
+        try:
+            resp = loader.xmlft.heapbait.call_func(0x4002a520)
+            print(f"[dbg] call_func -> {resp!r}")
+        except Exception as e:
+            print(f"[!] call_func error: {e!r}")
     val2 = read_word(loader)
     if val2 is None:
         print("[-] verify read failed")
@@ -90,7 +101,10 @@ def main():
         print("[-] write did not stick — aborting before reboot")
         return 1
     print("[+] nibble 3 set. Rebooting (WDT SW-reset preserves [3:0])...")
-    loader.shutdown(bootmode=loader.ShutDownModes.NORMAL)
+    try:
+        loader.shutdown(bootmode=loader.ShutDownModes.NORMAL)
+    except Exception as e:
+        print(f"[i] shutdown: {e!r} (device may have dropped already)")
     print("[*] NEXT SESSION: ./run_rgu_check.sh")
     return 0
 
