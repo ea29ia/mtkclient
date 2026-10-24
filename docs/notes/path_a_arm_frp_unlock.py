@@ -107,6 +107,10 @@ def main():
 
     if cur != 0:
         print("[+] gate already armed — nothing to write.")
+        print("[*] Go straight to the fastboot combo:")
+        print("    fastboot flashing get_unlock_ability   # expect: 1")
+        print("    fastboot flashing unlock               # press Vol-UP within 5 s")
+        return 0
     elif DRYRUN:
         print("[dryrun] would write marker now — rerun without PATHA_DRYRUN")
         pass  # port closes on process exit
