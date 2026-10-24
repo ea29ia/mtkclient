@@ -100,12 +100,14 @@ def main():
               "rerun with PLAN_B_GO=1 to write")
         return 0
 
-    # --- write (payload padded to UFS block size 0x1000; pre_erase=NO in XML) ---
-    # UFS block = 0x1000: unaligned transfer length hangs the DA data phase.
-    BS = 0x1000
-    pad = (-len(writedata)) % BS
-    wd = bytes(writedata) + bytes(pad)
-    print(f"[!] WRITING seccfg unlock ({len(wd)} B = payload + pad to UFS block {BS:#x}, "
+    # --- write (payload padded to full partition size; pre_erase=NO in XML) ---
+    # Full-partition length: WRITE-PARTITION без <space_list> пишет ВСЮ партицию
+    # (region = вся parтиция, per re-write-partition-offset.md §2) — паддим до
+    # fullsize, чтобы DA-цикл (exit по [slot+0x10] == region length) совпал с
+    # реально отправленными байтами; хвост seccfg в оригинале нулевой, так что
+    # нулевой пад не искажает контент.
+    wd = bytes(writedata) + bytes(fullsize - len(writedata))
+    print(f"[!] WRITING seccfg unlock ({len(wd)} B = payload + pad to fullsize {fullsize:#x}, "
           f"WRITE-PARTITION pre_erase=NO). Ctrl-C to abort.")
     time.sleep(5)
     ok, msg = xmlft.seccfg_write_partition(seccfg, wd)
