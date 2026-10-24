@@ -66,12 +66,22 @@ def show(blk: bytes, label: str):
     return locked, calc == stored
 
 
-def build_unlocked(blk: bytes) -> bytes:
-    b = bytearray(blk)
-    b[0xC:0x10] = b"\x00\x00\x00\x00"          # locked bit -> 0 (unlocked)
+def _resign(b: bytearray) -> bytes:
     b[0x3E0:0x400] = b"\x00" * 0x20
     b[0x3E0:0x400] = hashlib.sha256(bytes(b[:0x3E0])).digest()
     return bytes(b)
+
+
+def build_unlocked(blk: bytes) -> bytes:
+    b = bytearray(blk)
+    b[0xC:0x10] = b"\x00\x00\x00\x00"          # locked bit -> 0 (unlocked)
+    return _resign(b)
+
+
+def build_locked(blk: bytes) -> bytes:
+    b = bytearray(blk)
+    b[0xC:0x10] = b"\x01\x00\x00\x00"          # locked bit -> 1 (locked)
+    return _resign(b)
 
 
 def main():
@@ -109,24 +119,48 @@ def main():
     if len(cur) != 0x400:
         print(f"[-] mirror read failed ({len(cur):#x} != 0x400)")
         return 1
-    open(BEFORE, "wb").write(cur)
     locked, hash_ok = show(cur, "current mirror")
-    print(f"[*] saved -> {BEFORE} (md5 {hashlib.md5(cur).hexdigest()})")
 
-    # --- restore mode ---
+    # --- restore mode (never overwrite the pristine backup!) ---
     if RESTORE:
-        try:
-            orig = open(BEFORE, "rb").read()
-        except OSError:
-            print(f"[-] {BEFORE} missing")
-            return 1
-        print(f"[!] restoring the saved mirror block ({len(orig):#x} B) ...")
+        src = os.environ.get("MIRROR_RESTORE_SRC", "")
+        cands = ([src] if src else []) + [BEFORE, "/home/musin/rpmb_mirror_locked.bin",
+                                          "/home/musin/rpmb_probe_derived.bin"]
+        orig = None
+        used = None
+        for c in cands:
+            try:
+                b = open(c, "rb").read()
+            except OSError:
+                continue
+            if len(b) != 0x400:
+                continue
+            lk = struct.unpack("<I", b[0xC:0x10])[0]
+            hk = hashlib.sha256(b[:0x3E0]).digest() == b[0x3E0:0x400]
+            if lk == 1 and hk:
+                orig, used = b, c
+                break
+            print(f"[!] {c}: locked={lk} hash={'ok' if hk else 'bad'} — not the locked original, skipping")
+        if orig is None:
+            print("[!] no pristine locked block found; rebuilding one from the current "
+                  "payload (+0xC=1, rehash)")
+            orig = build_locked(cur)
+        print(f"[!] restoring mirror from {used or 'rebuilt'} ({len(orig):#x} B)")
+        show(orig, "target")
         ok = xmlft.custom_rpmb_write(MIRROR_BLOCK, MIRROR_N, orig)
         print(f"[*] write: {ok}")
         rb, _ = read_rpmb_range(xmlft, MIRROR_BLOCK, MIRROR_N, "readback")
         print(f"[*] readback identical: {rb == orig}")
         show(rb, "restored") if len(rb) == 0x400 else None
         return 0 if ok and rb == orig else 1
+
+    # normal mode: save the current block as the pre-write reference
+    if locked == 1 and hash_ok:
+        open(BEFORE, "wb").write(cur)
+        print(f"[*] saved -> {BEFORE} (md5 {hashlib.md5(cur).hexdigest()})")
+    else:
+        print(f"[i] current mirror is not the pristine locked block — NOT overwriting "
+              f"{BEFORE}")
 
     if not hash_ok:
         print("[!] current mirror hash is INVALID — LK already treats it as "
