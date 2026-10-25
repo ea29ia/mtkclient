@@ -2,7 +2,7 @@
 
 > Snapshot of the working log kept at `/home/musin/problem_status.md` (Russian, append-only).
 > Current summary: `docs/notes/STATUS-rmx3630-2026-10-24.md`.
-> Handoff for the next agent: `docs/notes/HANDOFF-termux-2026-10-25.md`.
+> Handoff for the next agent: `docs/notes/HANDOFF-2026-10-25.md`.
 
 # RMX3630 (MT6789/Helio G99) — разблокировка загрузчика. Статус проблемы.
 
@@ -616,4 +616,4 @@ ro.debuggable=1, ro.force.debuggable=1, persist.sys.usb.config=adb),
 - На устройстве props не применились → гипотеза №1: первую стадию исполняет
   `init` из `vendor_boot_a` (перекрывает наш из boot-рамдиска). Следующий шаг —
   дамп `vendor_boot_a` и проверка, есть ли там `init`.
-- Handoff: `docs/notes/HANDOFF-termux-2026-10-25.md`.
+- Handoff: `docs/notes/HANDOFF-2026-10-25.md`.

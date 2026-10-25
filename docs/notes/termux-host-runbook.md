@@ -1,6 +1,6 @@
 # Runbook: RMX3630 campaign, хост = рутованный Android + OTG (без ПК)
 
-Дата: 2026-10-24. Заменяет PC-based окружение из HANDOFF-rmx3630.md.
+Дата: 2026-10-24. Заменяет PC-based окружение. Актуальный handoff: `HANDOFF-2026-10-25.md`.
 Проверено: proot Debian в Termux (aarch64) — реверс-инструменты работают (r2, objdump),
 но **USB из proot недоступен** (fake root, /dev/bus/usb EACCES, proot-su фейковый).
 Вывод: mtkclient запускается в **Termux native**; proot остаётся для статики/реверса.

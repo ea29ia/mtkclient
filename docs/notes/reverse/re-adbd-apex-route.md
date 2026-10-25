@@ -6,8 +6,8 @@ no flashing, nothing written back). Inputs: stock export
 (884,732,164 B, Android sparse). Work dir `/tmp/fw`, large temporaries deleted
 after the run.
 
-Companion contracts: `PLAN-q1-q2-2026-10-25.md` §C, `HANDOFF-termux-2026-10-25.md`
-§2.3 / §6 item 3.
+Companion contracts: `PLAN-q1-q2-2026-10-25.md` §C (the Termux handoff it cites,
+§2.3 / §6 item 3, has been deleted).
 
 ---
 

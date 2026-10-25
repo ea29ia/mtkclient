@@ -13,7 +13,7 @@ Inputs:
 | `/tmp/opencode/vb/frag0.cpio` (vendor_boot ramdisk) | 88,000,768 B | — |
 
 Companions: `re-adbd-apex-route.md` §3.3 (vbmeta_system / dm-verity, stock export),
-`campaign-status-rmx3630.md` §"ro.adb.secure", `HANDOFF-pc-agent-2026-10-25.md`.
+`campaign-status-rmx3630.md` §"ro.adb.secure".
 
 **Campaign outcome (2026-10-25), which supersedes this note's premise:** the
 `ro.adb.secure=1` wall was removed **without touching `/system`** — the

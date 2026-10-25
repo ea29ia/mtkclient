@@ -2,8 +2,9 @@
 """build_v7_from_dump.py - assemble boot_v7.img from a FRESH boot_a dump.
 
 Target: RMX3630 / MT6789 (Oplus), branch `oplus-mt6789-unlock`.
-Spec:   docs/notes/HANDOFF-pc-agent-2026-10-25.md  section 4
-Why:    docs/notes/reverse/re-v7-rootfs-prop.md   (route R4c)
+Spec:   obsolete route - the boot_a ramdisk is never unpacked, see
+        docs/notes/reverse/re-v14-adb-works-2026-10-25.md
+Why:    docs/notes/reverse/re-v7-rootfs-prop.md   (route R4c, historical)
 
 v7 = the v5 ramdisk untouched, plus ONE extra cpio record
 `debug_ramdisk/adb_debug.prop` whose payload is byte-identical to the

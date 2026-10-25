@@ -8,7 +8,7 @@
 > caller; `seccfg_write_partition` sends `len(writedata)` verbatim).
 
 Date: 2026-10-24. Scope: all `docs/notes/re-*.md`, campaign docs (`rmx3630-da2/README.md`,
-`rmx3630_session_2026-10-23.md`, `oplus_mt6789_rmx3630.md`, `HANDOFF-rmx3630.md`), and
+`rmx3630_session_2026-10-23.md`, `oplus_mt6789_rmx3630.md`), and
 `heapbait.py`, `xml_lib.py` (apply_oplus_runtime_patches), `seccfg.py`, `v6.py seccfg()`.
 Read-only audit; no repo code was modified.
 

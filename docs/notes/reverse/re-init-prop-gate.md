@@ -540,7 +540,7 @@ ELF Header:
 
 ## 8. Правки к предыдущим документам
 
-1. `HANDOFF-termux-2026-10-25.md` §2.3: `0x2D81A0` — не «неопознанный вызов,
+1. Termux-handoff от 2026-10-25 (удалён), §2.3: `0x2D81A0` — не «неопознанный вызов,
    который может отбить», а PLT `android::base::ShouldLog`; `0x158C80` — не
    «ветка нет прав», а тело `LOG(INFO) "Loading /debug_ramdisk/adb_debug.prop"`.
 2. Там же: «`/prop.default` читается только после `IsRecoveryMode()`» — верно,
