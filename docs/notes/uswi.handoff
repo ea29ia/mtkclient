@@ -1,0 +1,189 @@
+# HANDOFF → Termux-агенту: RMX3630 / DA1 HeapBait port (2026-10-25)
+
+Цель: получить **code exec на стадии DA1** у RMX3630 (MT6789, OPLUS) через
+HeapBait в `CMD:DEBUG:DRAM-REPAIR`, затем переписать в памяти DA1 хэш DA2
+(`patch_da_hash`) и загрузить пропатченный DA2 → `CMD:CUSTOM` → `da_xml.bin`
+→ `CUSTOMRPMBI` → запись RPMB-зеркала → разблокировка.
+
+Работать в Termux: Python + Unicorn + capstone. Всё, что ниже, либо проверено
+на устройстве, либо прогнано в эмуляторе DA1 (`docs/notes/da1_emu.py`).
+Ничего не запускать на 2710EX01 до офлайн-проверки (см. §8).
+
+---
+
+## 1. Где мы находимся
+
+| направление | состояние |
+|---|---|
+| DA2 200EX01 (heapbait) | работает на устройстве; полный путь до записи RPMB-зеркала проверен |
+| LK / RPMB-зеркало | карта побайтово совпала с 2710EX01; рецепт разлока готов |
+| DA2 2710EX01 | транспортный клэмп → heapbait мёртв (закрыто) |
+| DA1 2710EX01 | клэмп + трипваер (закрыто) |
+| DA1 200EX01 | **уязвим** (нет клэмпа, нет трипваера), команда `CMD:DEBUG:DRAM-REPAIR` есть |
+| DA1 C.25 (`MT6789_REALME.bin`) | **уязвим по предикату #414** (`DRAM-REPAIR` есть, трипваера нет) |
+| Эмулятор DA1 | **работает**: heap_init, malloc/free, mxml, полный DOWNLOAD-FILE, 12-байтовое переполнение |
+
+Сейчас упёрлись в геометрию кучи: при `length=0x100` чанк сразу за `D`
+оказался **свободным остатком** → fake-header попал в free-list, а не в
+`free()` аллоцированного чанка; `dpc->cb` не выставился. Это та же лотерея,
+что у DA2, но теперь её видно в эмуляторе за секунды.
+
+---
+
+## 2. Резолвнутые параметры DA1 (200EX01, база `0x200000`)
+
+| параметр | значение | примечание |
+|---|---|---|
+| `fp_read_host_file` (download) | `0x2500D8` | xref `Download host file:%s` |
+| незаклэмпленный recv | `0x2503EC` | `ldr r0,[sp,#0x24]`, без `min()` |
+| heap_init | `0x2044C8` | `stm r1,{r0,r3}` |
+| heap_base / size | `0x2E8000` / `0x10000` | **64 КиБ**, не 16 МиБ |
+| free-list head | `0x2DF7D0` | узлы: `+0 next, +4 prev, +8 size` |
+| free (обёртка / ядро) | `0x204380` / `0x2043C8` | fire-write: `str r1,[r0,#8]` @`0x2043CC` |
+| insert | `0x2043D8` | сортировка по адресу, first-fit снизу |
+| dpc struct / dpc_addr | `0x2DF7A0` / `0x2DF79C` | геттер `0x201058` |
+| cmd_loop | `0x203C08` | `blx r4` @`0x2040D4` |
+| reg_cmd | `0x203BBC` | xref `CMD:REBOOT` |
+| get_node | `0x201004` | BL перед `da/arg/target_file` |
+| load_str (mxml) | `0x206DD4` | функция с `Bad %s` |
+| DRAM-REPAIR handler | `0x202C7C` | регистратор: `0x200ED0` |
+| packet_len global | `0x2DE3F8` | в эмуляторе ставим `0x2000` |
+| uart | `0x11002000` | по логу preloader |
+
+Регистратор: `0x200ED0`, пары «имя → хендлер» в `0x200F28..0x200FFC`
+(`CMD:REBOOT`→`0x2023B4`, `CMD:DEBUG:DRAM-REPAIR`→`0x202C7C`, `CMD:RAM-TEST`→`0x2014FC`, …).
+
+DA2 (для справки): `fp_read_host_file` `0x4002AE8C`, heap `0x40070E00/0x32000000`,
+dpc `0x40069DEC`, head `0x40069E94`, `CMD:CUSTOM` создаётся только патчем
+`patch_custom_command` (переименование `CMD:SET-HOST-INFO`).
+
+---
+
+## 3. Эмулятор DA1 — `docs/notes/da1_emu.py`
+
+Запуск:
+
+```bash
+pkg install python git
+pip install unicorn capstone          # unicorn 2.1.4 проверен
+cd ~/mtkclient
+python docs/notes/da1_emu.py            # берёт docs/notes/rmx3630-da2/da1_allinone.bin
+python docs/notes/da1_emu.py /path/to/DA1.bin
+```
+
+Что умеет:
+
+* мапит образ `0x200000..0x280000`, данные/BSS/кучу `0x2C0000..0x300000`, стек `0x2CF000`;
+* вызывает любую функцию DA1 (`call(addr, [args])`), ловит `bkpt`-трамплины;
+* `session[0]=recv`, `session[4]=send` → Python (`emu.rx` очередь, `emu.tx` лог);
+* хуки на `heap_init/malloc/free/insert` — печатают каждый чанк;
+* пустой `recv` теперь возвращает **ошибку** (иначе цикл DA крутится вечно);
+* MMIO (UART/WDT/таймеры) замьючен как «читать 0».
+
+Уже прогнано (пример вывода):
+
+```
+heap_init -> head 0x2DF7D0 base 0x2E8000 size 0x10000
+malloc(0x100) -> 0x2E800C
+DRAM-REPAIR -> DA send CMD:DOWNLOAD-FILE <info>DRAM-PARAM</info><source_file>param</source_file>
+host: OK, OK@0x100, chunk -> DA OK -> timeout -> ERR
+D = 0x2E960C, fake header @D+0x100: efbeadde 9cf72d00 00902e00
+free-list first node = 0x2E9710 (remainder) -> UC_ERR_MAP, dpc->cb = 0
+```
+
+### Протокол загрузки (проверено в эмуляторе)
+
+1. DA отправляет `CMD:DOWNLOAD-FILE` с `<packet_length>`;
+2. host → `OK\0` (ack команды);
+3. host → `OK@0x<total_len>\0` (длина);
+4. DA → `OK\0` (готов к чанку);
+5. host → `OK@0x<total_len>\0`, затем чанк данных (до `packet_length`);
+6. DA → `OK\0`; при переполнении `r7 > sb` — цикл не выходит по равенству,
+   следующий recv даёт timeout → error path → `free()`/`mxmlDelete`.
+
+`packet_len` в эмуляторе нужно выставить: `mem_write(0x2DE3F8, 0x2000)`.
+
+---
+
+## 4. Что делать дальше (по порядку)
+
+1. **Свип по `length`** в эмуляторе: для `L = 0x40..0x4000` прогнать `DRAM-REPAIR`,
+   записать: адрес `D`, размер чанка, что физически за `D` (allocated/free),
+   освобождается ли это позже (hook на `free`), выставился ли `dpc->cb`.
+   Цель — раскладка, где за `D` **аллоцированный** чанк, который умирает в
+   `mxmlDelete`/после хендлера.
+2. **Проверить fire**: после успешного `free()` вызвать `cmd_loop(0x203C08)` и
+   убедиться, что он делает `blx` на наш target.
+3. **Bootstrap-стаб под 64 КиБ**: NOP-след из DA2 невозможен. Нужен маленький
+   стаб в куче/стеке, который копирует шеллкод в SRAM (`0x20F0000` у #414;
+   для MT6789 подобрать свободный исполняемый регион) и прыгает туда.
+4. **`patch_da_hash`**: `find_da_hash_v6(da1, sig_len)` → `pos`; записать
+   `sha256(patched_da2)` по `da1_addr + pos` (через `EXP-PATCH-MEM` из payload
+   или через `WRITE-MEMORY`, если портирован SRAM-агент).
+5. **Устройство**: сначала наш 200EX01 (разблокирован, безопасно), затем
+   C.25-блоб от DekuzenOkahiro (см. §7).
+
+---
+
+## 5. Ключевые файлы
+
+* `docs/notes/da1_emu.py` — эмулятор/harness (этот хендофф).
+* `docs/notes/reverse/re-heapbait-vuln.md` — анатомия HeapBait на DA2.
+* `docs/notes/reverse/re-heapbait-stabilize.md` — аллокатор, геометрия, лотерея.
+* `docs/notes/reverse/re-da2-2710-audit-2026-10-25.md` — аудит 2710 + скрипт.
+* `docs/notes/da2_static_audit.py` — xref/клэмп/трипваер-чекер.
+* `docs/notes/rmx3630-da2/DA_BR.bin` — подписанный контейнер 200EX01
+  (sha256 `abee43e8…a8007c`); DA2 внутри — незаклэмпленный.
+* `docs/notes/rmx3630-da2/da1_allinone.bin` — DA1 200EX01 (наш).
+* PR #414 (`Xyzstk/mtkclient`) — рабочий DA1-хэпбейт на MT6991 (ARM64),
+  `src/heapbait_sram/*`, `run_da1_exploit`, `patch_da_hash` — референс.
+
+---
+
+## 6. Окружение Termux
+
+```bash
+pkg update
+pkg install python git clang make
+pip install unicorn capstone
+git clone https://github.com/ea29ia/mtkclient
+cd mtkclient && git checkout oplus-mt6789-unlock
+```
+
+Для устройства нужен `libusb`/`termux-usb` доступ (см. `docs/notes/termux-host-runbook.md`).
+Эмулятор работает без устройства и без root.
+
+---
+
+## 7. Люди / материалы
+
+* **DekuzenOkahiro** (Penumbra #134/#151) — RMX3630 на **C.25** (май 2024,
+  старее нашей), подписанный `DA_BR.bin`, Carbonara работает, доходил до DA2 boot;
+  у него `MT6789_REALME.bin` (sha `024d01b8…`) — DA1 проходит предикат #414.
+* **shomykohai** (Penumbra) — обещал auto DA patching для OPLUS, знает extension.
+* **alexander-dev2313123** — 2710EX01, опубликовал аудит, подписанный DA
+  (`2e15a832…`), только он может проверить DA-swap/DAA на 2710.
+* **Xyzstk** — автор #414 (ARM64 DA1 heapbait); его код — референс для порта.
+* `saidanimelek26/DA_mtk_FirehoseLoaders` — источник старых подписанных DA.
+
+---
+
+## 8. Безопасность
+
+* **2710EX01**: не запускать DA1-эксперименты — у него DA1 закрыт, а BROM
+  efuse-locked; ошибка = кирпич без дешёвого восстановления.
+* **200EX01**: устройство уже разблокировано, DA1 уязвим — это наш тестбекс;
+  падение DA1 лечится повторным входом в preloader (DA1 перезаливается).
+* Не писать в `seccfg` через `WRITE-FLASH` (анти-тампер затирает).
+* RPMB: перед любой записью снять блок `0x1DC..0x1DF` (0x400 B) и держать путь
+  восстановления — счётчик записи необратим, t-base SFSRP может один раз
+  ругнуться «Mismatch between the counters».
+
+---
+
+## 9. Репо-состояние
+
+* ветка: `oplus-mt6789-unlock`, remote `origin` = `ea29ia/mtkclient`;
+* в ней уже: `da2_static_audit.py`, аудит 2710, `DA_BR.bin` (подписанный),
+  README с таблицей регионов;
+* этот хендофф + `da1_emu.py` — следующий коммит.
