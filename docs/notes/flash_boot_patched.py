@@ -24,10 +24,10 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-IMG = "/home/musin/boot_patched.img"
+IMG = os.environ.get("FLASH_IMG", "/home/musin/boot_patched.img")
 GO = os.environ.get("FLASH_GO", "0") == "1"
 RESTORE = os.environ.get("BOOT_RESTORE", "")
-PART = "boot_a"
+PART = os.environ.get("FLASH_PART", "boot_a")
 
 
 def rd(loader, addr, length):
@@ -79,7 +79,7 @@ def main():
         rb = rd(loader, base, len(blob))
         print(f"[*] readback identical: {rb == blob}")
         if rb == blob:
-            print("[+] boot_a restored")
+            print(f"[+] {PART} restored")
             return 0
         print("[!] restore MISMATCH — retry, do not power-cycle into Android")
         return 1
@@ -89,12 +89,18 @@ def main():
         print(f"[-] {IMG} missing — run boot_ramdisk_patch.py first")
         return 1
     blob = open(IMG, "rb").read()
-    if blob[:8] != b"ANDROID!":
-        print("[-] patched image has no ANDROID! magic")
+    want = b"VNDRBOOT" if PART.startswith("vendor_boot") else b"ANDROID!"
+    if blob[:8] != want:
+        print(f"[-] {IMG} has no {want.decode('ascii')} magic (got {blob[:8]!r})")
         return 1
     import struct
-    print(f"[*] image: {len(blob):#x} B, kernel={struct.unpack_from('<I', blob, 8)[0]:#x}, "
-          f"ramdisk={struct.unpack_from('<I', blob, 0xC)[0]:#x}")
+    if want == b"VNDRBOOT":
+        print(f"[*] image: {len(blob):#x} B, vendor_ramdisk="
+              f"{struct.unpack_from('<I', blob, 0x18)[0]:#x}")
+    else:
+        print(f"[*] image: {len(blob):#x} B, "
+              f"kernel={struct.unpack_from('<I', blob, 8)[0]:#x}, "
+              f"ramdisk={struct.unpack_from('<I', blob, 0xC)[0]:#x}")
     if len(blob) > full:
         print("[-] image larger than the partition")
         return 1
