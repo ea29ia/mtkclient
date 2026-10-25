@@ -260,7 +260,7 @@ $ r2: 0x000f1710  29000014  b 0xf17b4       (vendor system/bin/init)
 ## 5. Прошивка (DA, preloader 22d9:0006)
 
 Предусловия как в `termux-host-runbook.md`: Termux native (не proot), root,
-`setenforce 0`, OTG; цель — в preloader `22d9:0006` (Vol+ & Vol− + кабель).
+`setenforce 0`, OTG; цель — в preloader `22d9:0006` (Vol Up + Vol Down + Power + кабель).
 Цель: **не** подключать кабель при старте Android, если нужен DA.
 
 ### 5.1 Обёртка (рекомендуется: бэкап + readback + отказ без бэкапа)

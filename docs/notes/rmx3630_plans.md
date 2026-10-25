@@ -4,8 +4,8 @@ Date: 2026-10-24. Status: all plans designed, none executed on the live device y
 Every plan references its reverse-engineering evidence in `docs/notes/reverse/`.
 
 Common preconditions for every plan:
-* Target caught in **preloader VCOM** (`22d9:0006`) — combo **Vol+ + Vol− on a
-  powered-off device** (confirmed by `enter_preloader_by_vol_up_down` /
+* Target caught in **preloader VCOM** (`22d9:0006`) — combo **Vol Up + Vol Down + Power on a
+  powered-off device** (on this unit Power must be held as well) (confirmed by `enter_preloader_by_vol_up_down` /
   `enter_bootrom_by_vol_up_down` in preloader, and by UnlockTool community usage).
 * Before every session: `rm -f .state hwparam.json` in the mtkclient dir.
 * Working env vars: `OPLUS_PATCH_LEVEL=5 OPLUS_SKIP_SLA=0 OPLUS_SKIP_HWINFO=1

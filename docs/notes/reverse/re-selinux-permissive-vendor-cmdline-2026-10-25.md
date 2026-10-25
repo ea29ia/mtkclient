@@ -396,7 +396,7 @@ avc: denied { setcurrent } for scontext=u:r:adbd:s0 tcontext=u:r:adbd:s0 tclass=
 
 The image is not verified by LK, so a bad vendor_boot cannot brick the device — worst case it does
 not boot Android. Recovery = reflash the old image from **preloader mode**
-(phone off, Vol+ & Vol- + USB ⇒ `22d9:0006`):
+(phone off, Vol Up + Vol Down + Power + USB ⇒ `22d9:0006`):
 
 ```bash
 cd /home/musin

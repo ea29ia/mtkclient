@@ -481,7 +481,7 @@ Backup first, then write **only `boot_a`**:
 
 ```sh
 cd ~/mtkclient
-# preloader mode: phone OFF, hold Vol+ & Vol-, plug USB -> 22d9:0006
+# preloader mode: phone OFF, hold Vol Up + Vol Down + Power, plug USB -> 22d9:0006
 python3 mtk.py --vid 0x22d9 --pid 0x0006 r boot_a /tmp/boot_a_before.img
 sha256sum /tmp/boot_a_before.img
 python3 mtk.py --vid 0x22d9 --pid 0x0006 w boot_a /tmp/opencode/seldec/boot_permissive.img

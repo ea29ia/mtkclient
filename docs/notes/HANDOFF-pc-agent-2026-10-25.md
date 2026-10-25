@@ -13,7 +13,7 @@
 # 1) синхронизировать репо
 cd ~/mtkclient && git fetch origin && git checkout oplus-mt6789-unlock && git pull --ff-only
 
-# 2) снять ТЕКУЩИЙ boot_a (preloader: питание off, Vol+ & Vol− + кабель → 22d9:0006)
+# 2) снять ТЕКУЩИЙ boot_a (preloader: питание off, Vol Up + Vol Down + Power + кабель → 22d9:0006)
 python3 mtk.py r boot_a /home/musin/boot_a_now.img
 md5sum /home/musin/boot_a_now.img          # ожидание: f0c1674243f465d9bb363a45642d2117 (v5)
 
@@ -184,7 +184,7 @@ FLASH_GO=1 ./run_flash_boot_patched.sh
 
 Нюансы:
 
-- preloader-режим: телефон **выключен**, `Vol+ & Vol−` + кабель → `22d9:0006`; `OPLUS_PATCH_F804_STUB` не включать;
+- preloader-режим: телефон **выключен**, `Vol Up + Vol Down + Power` + кабель → `22d9:0006`; `OPLUS_PATCH_F804_STUB` не включать;
 - после записи телефон **не перезагружается** — ритуал из TL;DR (10 с / 3 с / 90 с без кабеля);
 - откат: `BOOT_RESTORE=<бэкап из лога> FLASH_GO=1 ./run_flash_boot_patched.sh`.
 

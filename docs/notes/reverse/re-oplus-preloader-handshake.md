@@ -110,7 +110,7 @@ Risk: `img_auth_required` under SBC may cut factory boot downstream
 (cf. re-preloader-daa-lk.md Q2); what consumes 0x2F4264 downstream (boot-args
 to LK?) — inferred, TBD при живой сессии.
 
-d) Vol+ + Vol− combo on a powered-off device is **confirmed by the existence**
+d) Vol Up + Vol Down + Power combo on a powered-off device is **confirmed by the existence**
 of `enter_preloader_by_vol_up_down` (called from main @0x228764 — proven) /
 `enter_bootrom_by_vol_up_down` (*proven* that the functions exist; exact key
 semantics — inference from names).

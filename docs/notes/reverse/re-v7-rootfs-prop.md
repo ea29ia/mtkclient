@@ -237,7 +237,7 @@ C. два полных `build --variant v7` -> идентичные sha256 об�
 ## 4. Прошивка: **только `boot_a`**
 
 Предусловия как в `termux-host-runbook.md`: Termux native (не proot), root,
-`setenforce 0`, OTG; цель — preloader `22d9:0006` (Vol+ & Vol− + кабель).
+`setenforce 0`, OTG; цель — preloader `22d9:0006` (Vol Up + Vol Down + Power + кабель).
 `vendor_boot` **не трогаем** — этим снимается риск из `re-v6-build.md` §3.3.
 
 ### 4.1 Обёртка (бэкап + readback + авто-откат раздела)

@@ -31,7 +31,7 @@
 5) вставить кабель → lsusb / adb devices
 ```
 
-Для DA (preloader): выключить → **Vol+ & Vol−** + кабель → `22d9:0006`.
+Для DA (preloader): выключить → **Vol Up + Vol Down + Power** + кабель → `22d9:0006`.
 
 ---
 

@@ -92,7 +92,7 @@ mount | grep ' /data '      -> f2fs rw (file write tested)
 ## Rollback
 
 ```
-# preloader: hold Power 20-30 s -> Vol+ & Vol- + cable -> 22d9:0006
+# preloader: power off (hold Power 20-30 s) -> hold Vol Up + Vol Down + Power, plug the cable -> 22d9:0006
 cd /home/musin
 FLASH_IMG=/home/musin/vendor_boot_v14.img FLASH_PART=vendor_boot_a FLASH_GO=1 ./run_flash_vendor_boot.sh
 ```
