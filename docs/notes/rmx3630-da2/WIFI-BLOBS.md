@@ -27,3 +27,15 @@ kernel-required symbols — everything is already in the stock CRC baseline.
 
 **Use cases:** reference for `__versions` CRC patching of the rebuilt kernel;
 recovery source if `/vendor` is damaged; research into the connac gen4m driver.
+
+## Related: port-critical bundle (2026-10-26)
+
+`/root/firmware/rmx3630-wifi/port-critical-rmx3630.tar.gz`
+(3 033 235 B, sha256 `a5eade1eb83eea20c99494d34bcaea77da69753bdcca3c5c7e1089bc36836c1f`)
+
+16 modules whose sources are ABSENT from the OEM drop, grouped by what a
+Linux port cannot live without: full wireless stack (wlan/wmt/bt/gps/fm,
+11 modules), touch (gt9886), fingerprint (uff_fp/gf_tee/oplus_fp_common,
+3 modules), modem data path (ccci_md_all + ccci_dpmaif). Plus the device
+DTB extracted from vendor_boot_a (0x27ba040, 187 KB) and the full
+vendor_boot_a dump (64 MB, md5 `9070b1b4…`) as reference.
