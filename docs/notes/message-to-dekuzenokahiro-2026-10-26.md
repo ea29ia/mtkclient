@@ -1,58 +1,63 @@
-Привет!
+Hi!
 
-Мы закончили офлайн-работу по DA1 на MT6789 (RMX3630) и нашли то же самое
-семейство уязвимостей в старой сборке DA1 **C.25** — то есть в том блобе
-`MTK6789_REALME.bin` (sha256 `024d01b8...`), который ты раньше выкладывал.
-Спасибо за него — она оказалась ключевой.
+We've finished the offline work on the MT6789 (RMX3630) DA1 and found the
+same vulnerability family in the **C.25** DA1 build — the one in the
+`MTK6789_REALME.bin` blob (sha256 `024d01b8...`) you posted earlier.
+Thanks for that — it turned out to be the key piece.
 
-## Что мы сделали
+## What we did
 
-1. Статический аудит C.25 DA1: команда `CMD:DEBUG:DRAM-REPAIR`
-   зарегистрирована, tripwire-патча нет, приём длины от хоста не ограничен —
-   то есть уязвимость HeapBait (bkerler/mtkclient PR #414) жива в C.25.
-2. Порт нашей цепочки в эмуляторе Unicorn: staging по фиксированному адресу
-   0x40000000 через проваливающийся BOOT-TO -> переполнение в DRAM-REPAIR
-   (declared length 0x3C) -> исполнение 76-байтового стаба -> запись
-   sha256(патченного DA2) в слот DA1 -> DA1 остаётся живой -> настоящий
-   BOOT-TO принимает патченный DA2. Всё детерминированно (5/5 прогонов).
-3. Проверили подпись: твой контейнер подписан тем же ключом (K1), что и
-   наша сборка 200EX01, поэтому твой preloader примет и наш подписанный DA1.
+1. Static audit of the C.25 DA1: `CMD:DEBUG:DRAM-REPAIR` is registered,
+   the tripwire patch is absent, and the host-supplied recv length is
+   unclamped — i.e. the HeapBait bug (bkerler/mtkclient PR #414) is alive
+   in C.25.
+2. We ported our chain to the Unicorn emulator: staging at the fixed
+   address 0x40000000 via a deliberately failing BOOT-TO -> the
+   DRAM-REPAIR overflow (declared length 0x3C) -> a 76-byte stub runs ->
+   sha256(patched DA2) is written into DA1's expected-digest slot -> DA1
+   stays alive -> the real BOOT-TO then accepts the patched DA2.
+   Deterministic (5/5 runs).
+3. We checked the signature: your container is signed with the same key
+   (K1) as our 200EX01 build, so your preloader would also accept our
+   signed DA1.
 
-## Просьба: прогнать команды и прислать логи
+## Request: run the commands and send back the logs
 
-Готов раннер: `docs/notes/da1_c25_run.py` и ранбук
-`docs/notes/reverse/re-da1-c25-runbook-2026-10-26.md` (ветка
-`oplus-mt6789-unlock` в https://github.com/ea29ia/mtkclient).
+The runner is ready: `docs/notes/da1_c25_run.py`, runbook
+`docs/notes/reverse/re-da1-c25-runbook-2026-10-26.md` (branch
+`oplus-mt6789-unlock` at https://github.com/ea29ia/mtkclient).
 
-Важно: НИЧЕГО из этого не пишет во flash/seccfg/RPMB. Худшее, что может
-случиться — DA1 упадёт, это лечится переподключением к preloader (шаг 5).
-Устройство НЕ рутуется и НЕ перепрошивается этим скриптом.
+Important: NOTHING here writes to flash/seccfg/RPMB. The worst case is
+the DA1 session dying, which is recovered by re-entering preloader
+(step 5). The device is not rooted and not flashed by this script.
 
-Установка:
-  pkg install python git libusb libudev-zero clang binutils   # Android-хост
-  # на Linux-PC: git clone + pip install pyusb capstone unicorn mock serial pycryptodome colorama
+Install:
+  pkg install python git libusb libudev-zero clang binutils   # Android host
+  # on a Linux PC: git clone, then:
   pip install pyusb capstone unicorn mock serial pycryptodome colorama
 
-Без телефона:
-  python docs/notes/da1_c25_run.py --mode check --container <путь к mt6789_realme.bin>
-  python docs/notes/da1_c25_run.py --mode verify-offline --container <путь>
-  Оба должны закончиться PASS. Пришли весь вывод.
+Without the phone (please send the full output of both):
+  python docs/notes/da1_c25_run.py --mode check --container <path to mt6789_realme.bin>
+  python docs/notes/da1_c25_run.py --mode verify-offline --container <path>
+Both must end with PASS.
 
-С телефоном, по одному шагу (шаги 2-4 сразу после шага 1, в той же сессии):
+With the phone, one step at a time (steps 2-4 immediately after step 1,
+in the same session):
   python docs/notes/da1_c25_run.py --mode device --step 1 --dry-run
-  python docs/notes/da1_c25_run.py --mode device --step 1   # attach + загрузка DA1
+  python docs/notes/da1_c25_run.py --mode device --step 1   # attach + load DA1
   python docs/notes/da1_c25_run.py --mode device --step 2   # staging (fail BOOT-TO)
   python docs/notes/da1_c25_run.py --mode device --step 3   # fire (DRAM-REPAIR L=0x3C)
-  python docs/notes/da1_c25_run.py --mode device --step 4   # BOOT-TO с патченным DA2
-  (шаг 5 — восстановление: переподключение + перезаливка DA1)
+  python docs/notes/da1_c25_run.py --mode device --step 4   # BOOT-TO with patched DA2
+  (step 5 = recovery: re-attach + re-load DA1)
 
-Телефон подключать, удерживая Vol Up + Vol Down + Power (окно preloader
-~150-250 мс, запускай команду ДО подключения). На Linux-PC команды с sudo.
+Plug the phone while holding Vol Up + Vol Down + Power (the preloader
+window is ~150-250 ms; start the command BEFORE plugging). On a Linux
+PC run the device steps with sudo.
 
-Что прислать обратно: ПОЛНЫЙ stdout каждого шага (особенно строки
-probe / BOOT-TO response / DA verdict / DRAM-REPAIR response) и все строки
-с [!]/[-]/ошибками mtkclient. Успех шага 4 выглядит как
+What to send back: the FULL stdout of every step (especially the
+probe / BOOT-TO response / DA verdict / DRAM-REPAIR response lines) and
+all [!]/[-]/mtkclient error lines. Step 4 success looks like:
   SUCCESS: DA1's own hash gate PASSED (rc=0) with the patched DA2.
-Если что-то умерло — не страшно: шаг 5, и заново со шага 2.
+If something dies — no problem: step 5, then start again from step 2.
 
-Вопросы по шагам — пиши, ранбук короткий и конкретный.
+Questions about any step — just ask; the runbook is short and concrete.
