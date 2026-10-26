@@ -4,7 +4,7 @@ Target: RMX3630 / MT6789, C.25 DA1 (container `mt6789_realme.bin`,
 sha256 024d01b8...). Chain proven offline (`docs/notes/da1_chain_c25.py`
 RESULT: PASS). This runbook = how to try it ON DEVICE, one step at a time.
 
-## 0. Install (once, on the Android host / Termux native — NOT proot)
+## 0. Install (once, on a Linux/Android host with direct USB access)
 
 ```sh
 pkg install python git libusb libudev-zero clang binutils
@@ -40,7 +40,7 @@ Steps 2-4 MUST run in the SAME DA1 session as step 1 (staging lives in
 that session). Run them immediately after step 1, without re-plugging.
 
 ```sh
-su -c "setenforce 0"    # raw USB needs it
+sudo setenforce 0        # only if the host is an Android device; skip on a PC
 python docs/notes/da1_c25_run.py --mode device --step 1 --dry-run   # preview
 python docs/notes/da1_c25_run.py --mode device --step 1             # attach+DA1
 python docs/notes/da1_c25_run.py --mode device --step 2             # stage
@@ -48,8 +48,9 @@ python docs/notes/da1_c25_run.py --mode device --step 3             # fire
 python docs/notes/da1_c25_run.py --mode device --step 4             # patched BOOT-TO
 ```
 
-For each step: plug the target with the 3-button combo held (preloader
-window ~150-250 ms; start the step BEFORE plugging).
+For each step: plug the target (USB) while holding Vol Up + Vol Down +
+Power (BROM/preloader window is ~150-250 ms; start the step BEFORE
+plugging). On a Linux PC use sudo for raw USB access.
 
 ## 4. What success / failure looks like
 
@@ -65,7 +66,7 @@ window ~150-250 ms; start the step BEFORE plugging).
 ## 5. Recovery
 
 Any step dies / device vanishes from USB:
-1. unplug, plug again with 3-button combo (re-enter BROM),
+1. unplug, plug again with Vol Up + Vol Down + Power held (re-enter BROM),
 2. `python docs/notes/da1_c25_run.py --mode device --step 5`
    (re-attach + DA1 reload, safe, standard op),
 3. restart from step 2 in the new session.
