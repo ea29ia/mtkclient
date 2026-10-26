@@ -617,3 +617,26 @@ ro.debuggable=1, ro.force.debuggable=1, persist.sys.usb.config=adb),
   `init` из `vendor_boot_a` (перекрывает наш из boot-рамдиска). Следующий шаг —
   дамп `vendor_boot_a` и проверка, есть ли там `init`.
 - Handoff: `docs/notes/HANDOFF-2026-10-25.md`.
+
+## 32. Penumbra-survey и обновление доков (2026-10-26 09:10)
+
+- Прочитаны README + все доки penumbra (Download Agent / DA Extensions /
+  XML DA Protocol / Seccfg / Carbonara / Heapbait / Kamakiri) и их код
+  (heapbait.rs, carbonara.rs). Сравнение — в
+  `reverse/re-penumbra-survey-2026-10-26.md`.
+- Ключевое: (1) их heapbait-дока говорит packet_size 0x20000, их же код —
+  0x2000 (совпадает с нашим резолвером 200EX01); (2) их carbonara-детектор
+  на 2710/doogee держится только на ASCII-строке, r6-кламп `e3560101` не
+  покрыт (наш баг из gate.md подтверждён у них); (3) их sled
+  декларационный (HEAP_SIZE=0x32000000), у нас — лотерея/scratch.
+- Внесены errata: re-heapbait-vuln (+XML-escape как самостоятельный вектор,
+  packet_len корроборирован), re-heapbait-stabilize (sled math),
+  re-sec-dispatch / re-da2-readregister / re-da_br-readregister (2710:
+  EFUSE 0x40005C20/0x40005D04, READ/WRITE-REGISTER отсутствуют),
+  re-preloader-daa-lk (2710 base 0x200F00), re-tee-efuse (2710 UNISOC),
+  re-da1-2710-daswap (трейлер-кросс 0x3C, блок-карта S/K27),
+  re-consistency-audit (строка 0x4000599c — только 200EX01).
+- #409: ответ на 6411274575 опубликован (комментарий 6411816675, ea29ia):
+  карта блоков подтверждена, S живёт в 5 местах (2 preloader'а, 2 DA2,
+  .auth-стабы), исправлен наш кросс-байт 0x7C→0x3C, честная оговорка про
+  неполную офлайн-верификацию PSS.

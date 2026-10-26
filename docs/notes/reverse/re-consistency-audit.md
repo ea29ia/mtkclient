@@ -122,7 +122,7 @@ Full table (VA → attribution → source reports → status). Conflicts marked.
 | 0x400041b8 / 0x40004d78 / 0x40005578 | FU flash_list helpers | sec-dispatch | ok |
 | 0x40005400 / 0x400055a8 / 0x400055c4 / 0x400055d8 | oplus-aware erase dispatcher + keep-check call + "[oplus]keep" print + PRELOADER skip | scrubber | ok |
 | 0x4000597c | generic-erase-region erase-fail string ref | erase-audit | ok |
-| 0x4000599c / 0x40005a80 / 0x400064bc / 0x40006eec / 0x4000700c | WRITE-EFUSE / READ-EFUSE / GET-HW-INFO / READ-REGISTER / WRITE-REGISTER | session, sec-dispatch | ok |
+| 0x4000599c / 0x40005a80 / 0x400064bc / 0x40006eec / 0x4000700c | WRITE-EFUSE / READ-EFUSE / GET-HW-INFO / READ-REGISTER / WRITE-REGISTER | session, sec-dispatch | ok (200EX01 only; 2710 differs — see sec-dispatch errata) |
 | 0x400069f4 | CMD:EMMC-CONTROL (GET-RPMB-KEY-STATUS / LIFE-CYCLE-STATUS) | da2-rpmb-key, sec-dispatch | ok |
 | 0x40005ba8 / 0x40005d84 / 0x40005f64 / 0x40006394 / 0x400068d0 / 0x400077c4 | REBOOT / SET-BOOT-MODE / SET-RSC / WRITE-PRIVATE-CERT / GET-DA-INFO / GET-SYS-PROPERTY | sec-dispatch | ok |
 | 0x40006c1c / 0x40006cf4 / 0x40006ddc | SECURITY-SET-ALLINONE-SIGNATURE / GET-DEV-FW-INFO / SET-FLASH-POLICY | sec-dispatch, auth-paths, vuln | ok |

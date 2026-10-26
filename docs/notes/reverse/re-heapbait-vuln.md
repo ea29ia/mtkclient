@@ -229,3 +229,24 @@ CFI/hardening observed on the `blx r4` path.
   re-derived bit-for-bit.
 * Free-list coalescing after the fake insert (0x40009010–0x40009048) was not
   fully traced; it does not affect the cb write, which happens before it.
+
+## ERRATA (2026-10-26, penumbra survey)
+
+1. **packet_len global corroborated.** Penumbra's own exploit code
+   (`core_src_exploit_heapbait.rs`, stage-3 comment) states
+   `packet_length (0x2000)`, matching our resolver
+   (`[0x40067A08+0x14] = 0x2000`, line ~72 above). Their **doc**
+   (Heapbait.md) and the r0rt1z2 blog say `0x20000` — that is a
+   docs-copied-from-blog artifact; code vs code, both implementations agree on
+   0x2000 (for 200EX01). 2710 value still unconfirmed (one disasm pass on
+   `[0x40067A08+0x14]` of the 2710 DA2).
+2. **The XML-escape overflow is an independent vector, not a footnote.** Our
+   note treated the `0x200` escape buffer as context. r0rt1z2's writeup
+   (and the Chimera trace) show `mxml_escape` (fixed `malloc(0x200)`, expands
+   `&quot;`-class entities, no bounds check) overflows +172 B on its own and
+   can corrupt the AIO1 buffer that is then `free()`d by the next AIO command —
+   a self-contained primitive. It is exactly the overflow the
+   `MAX_FILE_NAME_LEN*6` + "Dest XML file name buffer overflow" tripwire
+   (live on 2710, bound `0xBFA`) guards. Both vectors (XML-escape and the
+   `fp_read_host_file` chunk loop) share the tripwire.
+3. Detection cross-check and full comparison: `re-penumbra-survey-2026-10-26.md`.

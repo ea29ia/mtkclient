@@ -310,3 +310,24 @@ and the SBC pubkey.
 * **Unresolved / next probes:** SFSRP start sector (needs either tbase base
   resolution + disasm of the RPMB block layer, or the on-device RPMB dump of
   §1c); meaning of words 0x37–0x46; exact SBC-pubkey-hash encoding.
+
+## ERRATA (2026-10-26, 2710 build — this note is 200EX01-scoped)
+
+Everything above maps the **200EX01** DA2 efuse surface (whitelist
+`0x40056e5c`, handler `0x40039ca0`, callers `0x40039e74`/`0x40032bf8`/`0x4003512c`,
+SBC = word 0x1F bit 1). The 2710EX01 DA2 differs materially: handlers are
+WRITE-EFUSE `0x40005C20` / READ-EFUSE `0x40005D04` (registrar
+`bl 0x400083DC` @`0x40001A9C`/`0x40001AB4`), the read side is a fixed
+37-entry table @`0x400571F8` (ids 0x03–0x2B; sbc_en bit1 / daa_en bit2 /
+sla_en bit3 / jtag_dis bit0 of masked words), and the **write side has no
+whitelist at all** — `blow_list` carries raw (addr, data) pairs from the
+512-byte XML image straight to the raw store `0x4003184A`; only the exact-512
+size gate (`cmp r5,#0x200; bne`) exists. Platform note: the efuse controller
+there is UNISOC-style AON @`0x11C10000` (BPKEY `0x6B32970A` → `0x11C10008`),
+not the MTK bank layout assumed for 200EX01. OTP polarity limits harm to
+*setting* bits, and guard `0x40032DC4` (`ands r0,#0x41; beq`) forbids blows
+once SBC∧DAA∧(JTAG bits) engage. Reachability on stock units is gated by the
+SEC-POLICY verifier `0x400076DC` — which our policy audit showed to be real
+RSA-2048 PKCS#1 v1.5 (e=`0x10001`, static OPLUS modulus), i.e. no forged-policy
+path without a memory primitive. Details: `/tmp/opencode/verify/efuse2710.md`;
+survey: `re-penumbra-survey-2026-10-26.md`.

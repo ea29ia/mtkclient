@@ -185,3 +185,13 @@ Code path (all VA, file = VA − 0x200F10):
   to "SBC enable" fuse — high-confidence inference (matches LK's `efuse_value/sbc_enable`
   string and MTK convention).
 - Key determinism of the GZ/EL3 mailbox key — unknown/unproven.
+
+## ERRATA (2026-10-26, build-scoped)
+
+The `VA = file_offset + 0x200F10` base proven above is the **200EX01** preloader only.
+The 2710EX01 preloader base is **0x200F00** (literal-consistency scan 1817/3182 vs 86 for the
+runner-up; image ends `0x2607D4`; functionally confirmed by the class gate at `0x25F350`
+reading `0x100` under this base). Every `0x25xxxx`/`0x2Fxxxx` VA quoted for 200EX01 must be
+rescaled by −0x10 for 2710; `0x200F10` reads garbage on the 2710 image. Full derivation:
+`/tmp/opencode/deliverable/preloader2710_daa.md`; survey:
+`re-penumbra-survey-2026-10-26.md`.

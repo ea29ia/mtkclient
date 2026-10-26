@@ -393,3 +393,15 @@ digest mismatch), `0xC0010001` (generic XML executor failure).
 * Low/unverified: mapping of every `fcn.4002cf68` call site to its exact XML command (done by
   nearby strings, not full control-flow proof); whether entry flag bits 0/2 have dedicated
   names (no strings found).
+
+## ERRATA (2026-10-26, build-scoped)
+
+The table above (cmd ids `0x40041459`/`0x40041469` → handlers `0x4000599c`/`0x40005a80`)
+is valid **for the 200EX01 DA2 (`da2_oplus.bin`) only**. On the 2710EX01 DA2 the same-looking
+addresses are loop bytes of an unrelated dispatcher (no xrefs); the 2710 registrar registers
+by string via `bl 0x400083DC` (`@0x40001A9C`/`0x40001AB4`): CMD:WRITE-EFUSE → **0x40005C20**,
+CMD:READ-EFUSE → **0x40005D04**. Additionally, on 2710 the **CMD:READ-REGISTER /
+CMD:WRITE-REGISTER commands are absent from the registrar entirely** (200EX01-only surface;
+our on-device digest computations via READ-REGISTER have no 2710 equivalent). Full 2710
+handler map: `/tmp/opencode/verify/efuse2710.md`; survey:
+`re-penumbra-survey-2026-10-26.md`.

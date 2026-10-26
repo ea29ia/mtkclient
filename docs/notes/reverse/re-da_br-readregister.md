@@ -55,6 +55,12 @@ offset'ы в DA2: `CMD:READ-REGISTER` @0x41488, `da/arg/bit_width` @0x42F9A,
 | **CMD:READ-REGISTER** | 0x40041488 | **0x40006EEC** | **всегда** (site 0x40001AC4) |
 | **CMD:WRITE-REGISTER** | 0x400414FF | **0x4000700C** | гейт @0x40001ADC: `[0x4005455C]==4` → "in read back mode"; `==3` → "do not get oplus permission" (не регистрируется вовсе) |
 
+> **ERRATA (2026-10-26):** всё выше — 200EX01 DA_BR-DA2. На 2710EX01: регистрация по строкам
+> (`bl 0x400083DC`), WRITE-EFUSE → `0x40005C20`, READ-EFUSE → `0x40005D04`, а
+> READ/WRITE-REGISTER **не зарегистрированы вовсе** (команд нет в списке; 0x4000599C/0x40005A80
+> на 2710 — байты чужого диспетчера, xref'ов нет). Детали: `/tmp/opencode/verify/efuse2710.md`,
+> `re-penumbra-survey-2026-10-26.md`.
+
 READ-REGISTER @0x40006EEC (disasm подтверждён в DA_BR-DA2):
 
 ```

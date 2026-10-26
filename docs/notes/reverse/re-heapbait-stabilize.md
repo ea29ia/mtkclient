@@ -361,3 +361,16 @@ preloader. The calibration path (3.6) is the route to a single-shot ~100%.
   calibration stability across sessions.
 * Unknown (needs one on-device run): exact value of the packet_len global
   (log it per 3.3), the live hole map, the recv timeout duration.
+
+## ERRATA (2026-10-26, penumbra survey)
+
+Penumbra's sled is **declaration-based**: `HEAP_SIZE = 0x32000000`,
+`SLED_OFF = (HEAP_SIZE/10)*9/10`, NOP repeat count `HEAP_SIZE/40` (~12.5 MB)
+— the shellcode address is computed from the heap size the *host declares*,
+not from observed heap state; the doc's "~80 MB" figure does not match the
+code constant. Our approach (victim-identity lottery + scratch linkA retry)
+deliberately does not trust the declaration; the two designs are complementary
+fallbacks. Note their stage-3 chunk size `USB_DATA_SIZE = 0x1400` and the
+`packet_length (0x2000)` comment agree with our numbers
+(`re-heapbait-vuln.md` errata). Full comparison:
+`re-penumbra-survey-2026-10-26.md`.

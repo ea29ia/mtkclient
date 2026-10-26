@@ -17,6 +17,12 @@ VA = file offset + 0x40000000 (подтверждено парами строк�
 |---|---|---|---|
 | CMD:WRITE-EFUSE | 0x40041459 | 0x4000599c | всегда |
 | CMD:READ-EFUSE | 0x40041469 | 0x40005a80 | всегда |
+
+> **ERRATA (2026-10-26):** таблица выше — только для 200EX01 (`da2_oplus.bin`). На 2710EX01
+> хендлеры другие (WRITE-EFUSE `0x40005C20`, READ-EFUSE `0x40005D04`, регистрация по строкам
+> через `bl 0x400083DC`), а сами команды READ/WRITE-REGISTER на 2710 **отсутствуют** —
+> on-device digest-вычисления через READ-REGISTER на 2710 невозможны. Детали:
+> `/tmp/opencode/verify/efuse2710.md`, `re-penumbra-survey-2026-10-26.md`.
 | CMD:GET-HW-INFO | 0x40041478 | 0x400064bc | всегда |
 | **CMD:READ-REGISTER** | 0x40041488 | **0x40006eec** | **всегда** |
 | **CMD:WRITE-REGISTER** | 0x4004150a | **0x4000700c** | **только если `[0x4005455c] ∉ {3,4}`** |
