@@ -1,0 +1,536 @@
+{
+  "identity": {
+    "path": "/tmp/opencode/fw_zips/fw420/DA_BR.bin [DA1 region @0xbc]",
+    "size": 428540,
+    "size_hex": "0x689fc",
+    "sha256": "39e3c614cba286f3a485c8d09a88084a780e8000a8d89e8d146157c42b3385d7",
+    "md5": "ed9144838586cb4b03b44fc2b70c6cc1",
+    "base": "0x200000",
+    "container_type": "allinone",
+    "file_size": 785024,
+    "file_size_hex": "0xbfa80",
+    "file_sha256": "f80607f31b9e9f4d2e5a4c11323644bd4c301bd4080fabfddfd2ce7848f6266e",
+    "container": {
+      "magic": "MTK_DOWNLOAD_AGENT",
+      "entries": 1,
+      "stride": "0xdc",
+      "regions": [
+        {
+          "entry": 0,
+          "hw_code": "0x1208",
+          "hw_sub_code": "0x8a00",
+          "hw_version": "0xca00",
+          "sw_version": "0x0",
+          "regions": [
+            {
+              "index": 0,
+              "file_offset": "0xbc",
+              "len": "0x689fc",
+              "addr": "0x200000",
+              "sig_len": "0x100",
+              "sane": true,
+              "has_CMD_BOOT_TO": true,
+              "sha256": "39e3c614cba286f3a485c8d09a88084a780e8000a8d89e8d146157c42b3385d7"
+            },
+            {
+              "index": 1,
+              "file_offset": "0xbc",
+              "len": "0x689fc",
+              "addr": "0x200000",
+              "sig_len": "0x100",
+              "sane": true,
+              "has_CMD_BOOT_TO": true,
+              "sha256": "39e3c614cba286f3a485c8d09a88084a780e8000a8d89e8d146157c42b3385d7"
+            },
+            {
+              "index": 2,
+              "file_offset": "0x68ab8",
+              "len": "0x56fc8",
+              "addr": "0x40000000",
+              "sig_len": "0x100",
+              "sane": true,
+              "has_CMD_BOOT_TO": false,
+              "sha256": "6133db3751ed7ec4e5f529cbbbbb574b11b64ac590348d1bb752d67a0a5d011c"
+            }
+          ]
+        }
+      ]
+    },
+    "da1": {
+      "file_offset": "0xbc",
+      "len": "0x689fc",
+      "base": "0x200000",
+      "sig_len": "0x100",
+      "sha256": "39e3c614cba286f3a485c8d09a88084a780e8000a8d89e8d146157c42b3385d7",
+      "sig_block_zeroed": false
+    },
+    "embedded_da2": {
+      "file_offset": "0x68ab8",
+      "len": "0x56fc8",
+      "base": "0x40000000",
+      "sig_len": "0x100",
+      "sha256": "6133db3751ed7ec4e5f529cbbbbb574b11b64ac590348d1bb752d67a0a5d011c"
+    },
+    "confidence": "high"
+  },
+  "self_test": {
+    "ok": true,
+    "image_anchors_tested": 1,
+    "checks": [
+      {
+        "label": "200EX01 movw/movt ip (interleaved pair) -> 0x2DE180",
+        "decode_ok": true,
+        "in_image_anchor": true,
+        "engine_ok": true,
+        "ok": true,
+        "detail": [
+          "synthetic decode -> 0x2de180 (expect 0x2de180)",
+          "engine pair movw@0x2012cc .. movt@0x2012d4 -> 0x2de180"
+        ]
+      },
+      {
+        "label": "2710 movw/movt r0 (adjacent pair) -> 0x262E17",
+        "decode_ok": true,
+        "in_image_anchor": false,
+        "engine_ok": null,
+        "ok": true,
+        "detail": [
+          "synthetic decode -> 0x262e17 (expect 0x262e17)"
+        ]
+      }
+    ]
+  },
+  "notes": [],
+  "heap": {
+    "heap_init": {
+      "va": "0x2044c8",
+      "validated": true,
+      "confidence": "high",
+      "evidence": [
+        "0x2044c8  movw r1, #0xf7d0",
+        "0x2044cc  movw r0, #0x8000",
+        "0x2044d0  movw r3, #0x8000",
+        "0x2044d4  movt r1, #0x2d",
+        "0x2044d8  movt r0, #0x2e",
+        "0x2044dc  movt r3, #0x2f",
+        "0x2044e0  sub r3, r3, r0",
+        "0x2044e4  add r2, r1, #8",
+        "0x2044e8  stm r1, {r0, r3}",
+        "0x2044ec  str r2, [r1, #8]",
+        "0x2044f0  str r2, [r1, #0xc]",
+        "0x2044f4  str r3, [r0, #8]",
+        "0x2044f8  b #0x2043d8",
+        "0x2044fc  b #0x235a5c"
+      ]
+    },
+    "heap_head": {
+      "va": "0x2df7d0",
+      "validated": true,
+      "confidence": "high",
+      "evidence": [
+        "0x2044e8  stm r1, {r0, r3}",
+        "0x2044ec  str r2, [r1, #8]",
+        "0x2044f0  str r2, [r1, #0xc]",
+        "0x2044f4  str r3, [r0, #8]"
+      ],
+      "layout": {
+        "heap_head+0x0": "arena base",
+        "heap_head+0x4": "arena size",
+        "heap_head+0x8": "sentinel node",
+        "heap_head+0xC": "free-list chain head"
+      },
+      "sentinel": "0x2df7d8"
+    },
+    "heap_arena": {
+      "base": "0x2e8000",
+      "size": "0x10000",
+      "end": "0x2f8000",
+      "validated": true,
+      "confidence": "high",
+      "evidence": [
+        "0x2044d8  movt r0, #0x2e",
+        "0x2044dc  movt r3, #0x2f",
+        "0x2044e0  sub r3, r3, r0"
+      ]
+    },
+    "insert": {
+      "va": "0x2043d8",
+      "validated": true,
+      "confidence": "high",
+      "evidence": [
+        "0x2043d8  push {r4, r5, fp, lr}",
+        "list head 0x2df7d0 re-referenced at 0x2043e4",
+        "0x2043ec  ldr r1, [ip, #0xc]"
+      ]
+    },
+    "free": {
+      "va": "0x204380",
+      "validated": true,
+      "confidence": "high",
+      "evidence": [
+        "0x204380  push {r4, sl, fp, lr}",
+        "0x2043c8  ldmdb r4, {r0, r1}",
+        "0x2043cc  str r1, [r0, #8]"
+      ]
+    },
+    "fire_write": {
+      "va": "0x2043cc",
+      "validated": true,
+      "confidence": "high",
+      "shape": "str r1, [r0, #8]",
+      "evidence": [
+        "0x2043c8  ldmdb r4, {r0, r1}",
+        "0x2043cc  str r1, [r0, #8]",
+        "writes size([node+4]) to [node+8] = dpc->cb"
+      ],
+      "dpc_node": "0x2043c8"
+    },
+    "malloc": {
+      "va": "0x2041e8",
+      "validated": true,
+      "confidence": "high",
+      "evidence": [
+        "0x2041e8  push {r4, r5, r6, sl, fp, lr}",
+        "0x2041ec  add fp, sp, #0x10",
+        "0x2041f0  sub r3, r1, #1",
+        "0x2041f4  mov r2, r0",
+        "0x2041f8  mov r0, #0",
+        "0x2041fc  tst r1, r3",
+        "0x204210  movt lr, #0x2d"
+      ]
+    },
+    "dpc": {
+      "va": "0x2df7a0",
+      "validated": true,
+      "confidence": "high",
+      "evidence": [
+        "0x201058  movw r0, #0xf7a0",
+        "0x201058  movw r0, #0xf7a0",
+        "0x20105c  movt r0, #0x2d"
+      ],
+      "cb_field": "0x2df7a4",
+      "arg_field": "0x2df7a8"
+    },
+    "dpc_node": {
+      "va": "0x2df79c",
+      "validated": true,
+      "confidence": "high",
+      "evidence": [
+        "node = dpc - 4; free() reads node=[user-8]",
+        "fire write target (node+8) = dpc+4 = cb field"
+      ]
+    },
+    "cmd_loop": {
+      "va": "0x203c08",
+      "validated": true,
+      "confidence": "high",
+      "evidence": [
+        "0x203c08  push {r4, r5, r6, r7, r8, sb, sl, fp, lr}"
+      ]
+    },
+    "blx_cb": {
+      "va": "0x2040d4",
+      "validated": true,
+      "confidence": "high",
+      "shape": "blx r4",
+      "evidence": [
+        "0x2040c8  ldr r4, [r0, #4]",
+        "0x2040d4  blx r4",
+        "getter 0x201058 returns dpc 0x2df7a0"
+      ]
+    }
+  },
+  "download": {
+    "function": "0x2500d8",
+    "sources": [
+      "string 'Download host file' @0x26278b xref 0x250110 -> function 0x2500d8",
+      "BOOT-TO 0x201080 calls 0x2500d8 at 0x2011e4"
+    ],
+    "confidence": "high",
+    "packet_len_global": "0x2de3f8",
+    "recv_call": "0x250404",
+    "recv_len_slot": "0x7c",
+    "recv_len_store": "0x2503f4",
+    "classification": "UNCLAMPED",
+    "evidence": [
+      "0x2503dc  ldr r2, [r8, #4]",
+      "0x2503e0  mov r0, r4",
+      "0x2503e4  mov r1, #3",
+      "0x2503e8  blx r2",
+      "0x2503ec  ldr r0, [sp, #0x24]",
+      "0x2503f0  mov r1, sl",
+      "0x2503f4  str r0, [sp, #0x7c]",
+      "0x250404  blx r2"
+    ],
+    "clamp_pattern": "packet_len stored directly"
+  },
+  "da2_surface": {
+    "confidence": "high",
+    "boot_to_handler": "0x201080",
+    "slot_va": "0x2688cc",
+    "slot_file_offset": "0x688cc",
+    "compare_site": "0x20129c",
+    "sha_entry": "0x2522c4",
+    "sha_entry_evidence": [
+      "0x2522c4  push {r4, sl, fp, lr}",
+      "0x2522c8  add fp, sp, #8",
+      "0x2522cc  mov r4, r3",
+      "0x2522d0  bl #0x252e94",
+      "0x2522d4  mov r1, #0x20",
+      "0x2522d8  str r1, [r4]",
+      "0x2522dc  pop {r4, sl, fp, pc}",
+      "0x2522e0  ldr r1, [r0, #4]",
+      "0x2522e4  ldr r0, [r0, #8]",
+      "0x2522e8  cmp r0, r1, lsl #2"
+    ],
+    "sha_fixed_32_byte_out": true,
+    "evidence": [
+      "0x20129c  ldrb r3, [r6, r1]",
+      "0x2012a0  cmp r3, r2"
+    ],
+    "slot_layout": {
+      "sig_len": "0x100",
+      "matches": true
+    }
+  },
+  "predicate": {
+    "cmd_string_present": true,
+    "cmd_string_va": "0x2545bd",
+    "cmd_registered_in_table": true,
+    "cmd_handler": "0x202c7c",
+    "tripwire_present": false,
+    "tripwire_va": null,
+    "verdict": "VULNERABLE",
+    "reason": "CMD:DEBUG:DRAM-REPAIR registered in the command table and the DA2 tripwire string is absent",
+    "confidence": "high",
+    "rule": "PR #414 is_da1_vulnerable: DRAM-REPAIR present && tripwire absent"
+  },
+  "da2_hash": {
+    "source": "embedded DA2 region @0x68ab8",
+    "size": 356296,
+    "sha256": "6133db3751ed7ec4e5f529cbbbbb574b11b64ac590348d1bb752d67a0a5d011c",
+    "candidates": [
+      {
+        "candidate": "sha256(body)",
+        "body_len": "0x56fc8",
+        "sha256": "6133db3751ed7ec4e5f529cbbbbb574b11b64ac590348d1bb752d67a0a5d011c",
+        "found_at_file_offset": null,
+        "found_at_va": null,
+        "matches_slot": false
+      },
+      {
+        "candidate": "sha256(body[:-0x100])",
+        "body_len": "0x56ec8",
+        "sha256": "27103e182e199a3866383050d528efbc23e0c0e691dc97586fd35a02000e46db",
+        "found_at_file_offset": "0x688cc",
+        "found_at_va": "0x2688cc",
+        "matches_slot": true
+      },
+      {
+        "candidate": "sha256(body[:-0x140])",
+        "body_len": "0x56e88",
+        "sha256": "74cecb8a00390ed9b381ef36e31d38e252fa5c57c725fc4634340e16dbae0027",
+        "found_at_file_offset": null,
+        "found_at_va": null,
+        "matches_slot": false
+      }
+    ],
+    "conclusion": "sha256(body[:-0x100])"
+  },
+  "diff_vs_200EX01": {
+    "reference": {
+      "name": "200EX01",
+      "sha256": "e1a4110a394db63c5e1a56e8c6e2acfe495faf0167b20f6b85aefe649a3823f2"
+    },
+    "addresses": [
+      {
+        "item": "registrar",
+        "this": "0x200ed0",
+        "ref_200EX01": "0x200ed0",
+        "delta": "0x0",
+        "state": "identical"
+      },
+      {
+        "item": "reg_cmd",
+        "this": "0x203bbc",
+        "ref_200EX01": "0x203bbc",
+        "delta": "0x0",
+        "state": "identical"
+      },
+      {
+        "item": "table_head",
+        "this": "0x266070",
+        "ref_200EX01": "0x266070",
+        "delta": "0x0",
+        "state": "identical"
+      },
+      {
+        "item": "cmd_loop",
+        "this": "0x203c08",
+        "ref_200EX01": "0x203c08",
+        "delta": "0x0",
+        "state": "identical"
+      },
+      {
+        "item": "blx_cb",
+        "this": "0x2040d4",
+        "ref_200EX01": "0x2040d4",
+        "delta": "0x0",
+        "state": "identical"
+      },
+      {
+        "item": "dpc",
+        "this": "0x2df7a0",
+        "ref_200EX01": "0x2df7a0",
+        "delta": "0x0",
+        "state": "identical"
+      },
+      {
+        "item": "dpc_node",
+        "this": "0x2df79c",
+        "ref_200EX01": "0x2df79c",
+        "delta": "0x0",
+        "state": "identical"
+      },
+      {
+        "item": "malloc",
+        "this": "0x2041e8",
+        "ref_200EX01": "0x2041e8",
+        "delta": "0x0",
+        "state": "identical"
+      },
+      {
+        "item": "free",
+        "this": "0x204380",
+        "ref_200EX01": "0x204380",
+        "delta": "0x0",
+        "state": "identical"
+      },
+      {
+        "item": "fire_write",
+        "this": "0x2043cc",
+        "ref_200EX01": "0x2043cc",
+        "delta": "0x0",
+        "state": "identical"
+      },
+      {
+        "item": "insert",
+        "this": "0x2043d8",
+        "ref_200EX01": "0x2043d8",
+        "delta": "0x0",
+        "state": "identical"
+      },
+      {
+        "item": "heap_init",
+        "this": "0x2044c8",
+        "ref_200EX01": "0x2044c8",
+        "delta": "0x0",
+        "state": "identical"
+      },
+      {
+        "item": "heap_head",
+        "this": "0x2df7d0",
+        "ref_200EX01": "0x2df7d0",
+        "delta": "0x0",
+        "state": "identical"
+      },
+      {
+        "item": "heap_base",
+        "this": "0x2e8000",
+        "ref_200EX01": "0x2e8000",
+        "delta": "0x0",
+        "state": "identical"
+      },
+      {
+        "item": "heap_size",
+        "this": "0x10000",
+        "ref_200EX01": "0x10000",
+        "delta": "0x0",
+        "state": "identical"
+      },
+      {
+        "item": "download",
+        "this": "0x2500d8",
+        "ref_200EX01": "0x2500d8",
+        "delta": "0x0",
+        "state": "identical"
+      },
+      {
+        "item": "recv_len_store",
+        "this": "0x2503f4",
+        "ref_200EX01": "0x2503f4",
+        "delta": "0x0",
+        "state": "identical"
+      },
+      {
+        "item": "packet_len",
+        "this": "0x2de3f8",
+        "ref_200EX01": "0x2de3f8",
+        "delta": "0x0",
+        "state": "identical"
+      },
+      {
+        "item": "dram_repair_handler",
+        "this": "0x202c7c",
+        "ref_200EX01": "0x202c7c",
+        "delta": "0x0",
+        "state": "identical"
+      },
+      {
+        "item": "boot_to",
+        "this": "0x201080",
+        "ref_200EX01": "0x201080",
+        "delta": "0x0",
+        "state": "identical"
+      },
+      {
+        "item": "sha256",
+        "this": "0x2522c4",
+        "ref_200EX01": "0x2522c4",
+        "delta": "0x0",
+        "state": "identical"
+      },
+      {
+        "item": "digest_slot",
+        "this": "0x2688cc",
+        "ref_200EX01": "0x2688cc",
+        "delta": "0x0",
+        "state": "identical"
+      }
+    ],
+    "commands": {
+      "this_count": 12,
+      "ref_count": 12,
+      "only_in_this": [],
+      "only_in_ref": []
+    },
+    "strings": {
+      "CMD:DEBUG:DRAM-REPAIR": {
+        "this": "0x2545bd",
+        "ref": "0x2545bd"
+      },
+      "Dest XML file name buffer overflow": {
+        "this": null,
+        "ref": null
+      },
+      "Download host file": {
+        "this": "0x26278b",
+        "ref": "0x26278b"
+      },
+      "DA hash mismatch.": {
+        "this": null,
+        "ref": null
+      }
+    }
+  },
+  "tool": {
+    "name": "da1_static_audit",
+    "version": "1.0"
+  },
+  "inputs": {
+    "blob": "/tmp/opencode/fw_zips/fw420/DA_BR.bin",
+    "da2": null,
+    "da2_source": "embedded DA2 region @0x68ab8",
+    "base_override": null
+  }
+}

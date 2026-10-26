@@ -29,7 +29,7 @@ Build timeline relevant to scoping (all from committed audit notes):
 |---|---|---|
 | DA1-era blobs 2022-12 … 2025-06 | — | out of scope here (separate DA1 issue family, cf. `re-da1-collection-audit-2026-10-26.md`) |
 | 200EX01 (RMX3630 14.0.0.200EX01, 2024-09-02) | 2024-09 | command present; debug path unverified |
-| 420EX01 (2025-03-04) | 2025-03 | not audited |
+| 420EX01 (2025-03-04) | 2025-03 | DA1 audited 2026-10-26 (`re-da1-420audit-2026-10-26.md`): VULNERABLE/UNCLAMPED, S(K1)-signed, same DA1 code as 200EX01; DA2 debug path still unverified |
 | **2710EX01 (2025-12-09)** | 2025-12 | **proven vulnerable** (static audit + emulation) |
 
 ## 2. Severity reasoning (CVSS v3.1-style)
@@ -258,7 +258,9 @@ with a scratch-target option) shows the forge is a single 32-bit RAM write.
   (`initial_chksum_info`) — emulation stops there; on silicon both are transparent.
 * Whether the 200EX01 (2024-09) or 420EX01 (2025-03) DA2 builds carry the same
   ungated debug-XML path (command presence is proven for 200EX01; handler-level
-  equivalence is not).
+  equivalence is not). Note: the 420EX01 **DA1** was fully audited on 2026-10-26
+  (`re-da1-420audit-2026-10-26.md`) — VULNERABLE/UNCLAMPED, S(K1)-signed — but that
+  is the #414-family DA1 issue, not this DA2 path.
 * Whether a *valid* seccfg record on silicon triggers in-DA regeneration of seccfg
   content on write (the 200EX01-observed behavior class) — HACC-blocked in emu.
 

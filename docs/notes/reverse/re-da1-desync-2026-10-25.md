@@ -256,6 +256,9 @@ free list is achievable with constants only.
   runtime address**. It is **not build-independent**: the 0x4C hole / 0x40
   capacity and the `L+4 → align4(L+0x10)` rounding are 200EX01 constants and
   must be re-measured for the 420EX01 build on the phone.
+  (Update 2026-10-26: the 420EX01 DA1's static constants are now resolved — all
+  identical to 200EX01, see `re-da1-420audit-2026-10-26.md` §6 — so only the
+  runtime heap desync itself remains to be measured on silicon.)
 
 ---
 

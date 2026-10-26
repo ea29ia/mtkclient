@@ -39,6 +39,31 @@ mtkclient can consume it directly: `--loader docs/notes/rmx3630-da2/DA_BR.bin`
 (`DAconfig - Using custom loader: …`). Use it only for the DAA
 accept/reject experiment; the DA2 inside is the unclamped 200EX01 build.
 
+## 420EX01 container (the firmware our phone actually runs) — `DA_BR_420.bin`
+
+Full MTK DA container harvested by HTTP range-requests from the official
+14.0.0.420(EX01) export zip (see `docs/notes/reverse/re-da1-420audit-2026-10-26.md`):
+
+- size: 785024 bytes
+- md5:    `2f82282a55ab88c3e21f4b2aa19841df`
+- sha256: `f80607f31b9e9f4d2e5a4c11323644bd4c301bd4080fabfddfd2ce7848f6266e`
+- container header: `MTK_DA_v6_2025-02-25 20:46:17`
+- provenance: `IMAGES/download_agent/DA_BR.bin` inside
+  `RMX3630export_11_14.0.0.420EX01_2025030414560165.zip`
+  (`https://rms01.realme.net/sw/RMX3630export_11_14.0.0.420EX01_2025030414560165.zip`,
+  `version_info.txt` pins `RMX3630_14.0.0.420(EX01)_250225`, compile 2025-02-25)
+
+| stage | file offset | length | load VA | sha256 of region |
+|---|---|---|---|---|
+| DA1 | `0xBC` | `0x689FC` | `0x200000` | `39e3c614cba286f3a485c8d09a88084a780e8000a8d89e8d146157c42b3385d7` |
+| DA2 | `0x68AB8` | `0x56FC8` | `0x40000000` | `6133db3751ed7ec4e5f529cbbbbb574b11b64ac590348d1bb752d67a0a5d011c` |
+
+Static triage (full detail in `re-da1-420audit-2026-10-26.md`): VULNERABLE /
+UNCLAMPED / `CMD:DEBUG:DRAM-REPAIR` registered / S(K1)-era signature (PSS
+VERIFIED against the 200EX01-preloader modulus; structurally fails K27) /
+digest slot 0x2688CC binds its own DA2. All chain addresses identical to
+200EX01. Full audit JSON: `audit_420ex01_da1.json`.
+
 ## Loading / disassembly hints
 
 - Load base: **0x40000000** (file offset 0 == VA 0x40000000).
@@ -70,6 +95,7 @@ accept/reject experiment; the DA2 inside is the unclamped 200EX01 build.
 | 0x40039d00 | `get_hw_sbc` (patch optional, OPLUS_SBC_PATCH=1) |
 | 0x400416bf | "DA.SLA ENABLED" -> DISABLE string reference site |
 | 0x400084a4 | generic "Security deny for [%s]" printer (~130 callers — do NOT patch) |
+
 
 ## Open reversing questions
 

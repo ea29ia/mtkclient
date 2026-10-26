@@ -42,6 +42,7 @@ file `0x5D4DC`). `other` = OEM-specific modulus (not our K1/K2).
 | `infinix2.bin` | 2024-09-29 | VULNERABLE | UNCLAMPED | **YES** | other | `0x262C40` |
 | `oukitel.bin` | 2025-01-03 | VULNERABLE | **CLAMPED** | no | other | `0x260244` |
 | `infinix3.bin` | 2025-01-08 | VULNERABLE | **CLAMPED** | no | other | `0x262F58` |
+| `DA_BR_420.bin` (420EX01) | 2025-02-25 | VULNERABLE | UNCLAMPED | **YES** | **K1** | `0x2688CC` |
 | `doogee.bin` | 2025-06-24 | VULNERABLE | **CLAMPED** | no | other | `0x2604F4` |
 | `DA_BR.bin` (2710) | 2025-12-09 | **PATCHED** | CLAMPED | no | **K2** | `0x2692F4` |
 | `DA1_6789_in.bin` (raw) | — | VULNERABLE | UNCLAMPED | **YES** | — | `0x262DA8` |
@@ -49,8 +50,13 @@ file `0x5D4DC`). `other` = OEM-specific modulus (not our K1/K2).
 | `DA2_6789_in.bin` (raw DA2) | — | n/a | — | n/a | — | — |
 | `DA2_6789_op.bin` (raw DA2) | — | n/a | — | n/a | — | — |
 
-Totals: 19 inputs → **13 heapbait-exploitable**, 3 predicate-only/clamped,
-1 patched, 2 are DA2 (not DA1).
+420EX01 row (2026-10-26 update): audited in `re-da1-420audit-2026-10-26.md`;
+this is OUR OWN PHONE's firmware. It is the **same DA1 code as 200EX01**
+(all resolver deltas 0x0, only date strings + DA2 digest differ) and moves
+the oplus-line clamp datapoint from "untested" to **2025-02-25 still
+UNCLAMPED** — the 2025-01 clamp of oukitel/infinix3 is per-vendor, not a
+global MTK fix. Totals become 20 inputs → **14 heapbait-exploitable**, 3
+predicate-only/clamped, 1 patched, 2 DA2.
 
 ## 3. Patterns
 
@@ -59,6 +65,11 @@ Totals: 19 inputs → **13 heapbait-exploitable**, 3 predicate-only/clamped,
    command stays registered and the tripwire string is still absent, but
    the clamp makes HeapBait inert — this is exactly why #414 alone is not
    a vulnerability verdict.
+   *Refinement (420EX01 audit, `re-da1-420audit-2026-10-26.md`):* oplus's own
+   2025-02-25 MT6789 DA1 is still UNCLAMPED — the 2025-01 clamp datapoint is
+   **per-vendor**, not a global MTK code drop. Within the oplus line, clamp +
+   tripwire + command removal + K27 rotation all land together between
+   2025-02-25 and 2025-12-09 (2710).
 2. **2025-12 (2710) is the second stage of the fix**: the command is
    removed entirely, the tripwire is present, and the DAA key is rotated
    K1 → K2. Nothing of the DA1 path survives.

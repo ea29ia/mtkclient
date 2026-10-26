@@ -28,7 +28,7 @@ silently also buys "rewrite its security state".
 |---|---|---|---|
 | DA1-era blobs 2022–2025 (13 heapbait-exploitable in our 19-blob corpus) | 2022-12 … 2025-06 | DA1 layer, separate issue (#414-family) | `re-da1-collection-audit-2026-10-26.md` |
 | 14.0.0.200EX01 (RMX3630, DA_BR 2024-09-02) | 2024-09 | command registered unconditionally; handler not diffed at the debug-path level — **unverified** | `re-da2-readregister.md`, `re-da2-2710-audit-2026-10-25.md` |
-| 14.0.0.420EX01 (2025-03-04) | 2025-03 | not audited | `oplus_mt6789_rmx3630.md` |
+| 14.0.0.420EX01 (2025-03-04, built 2025-02-25) | 2025-03 | **DA1 audited 2026-10-26** (`re-da1-420audit-2026-10-26.md`): VULNERABLE/UNCLAMPED, S(K1)-signed — this is the build our own phone runs; DA2 debug-efuse path still unverified at the handler level | `re-da1-420audit-2026-10-26.md` |
 | C.25-era unit (community) | 2023-03 blob | not audited for this path | `re-da1-collection-audit-2026-10-26.md` |
 | **14.0.0.2710EX01-era DA2 (2025-12-09)** | 2025-12 | **PROVEN vulnerable** (audit + emulation, rc=0 writes) | `re-da2-2710-efuse-2026-10-26.md`, `re-da2-2710-efuse-chain-2026-10-26.md` |
 
