@@ -26,6 +26,11 @@ the structural reference this note confirms/corrects for 2710),
 | Q3: can a forged session WRITE seccfg content? | **Bytes land verbatim** at the driver boundary (a full SecCfgV4 record with `lock_state=3` was committed byte-exact through the DA's own write wrapper `0x4002D734`). The DA-side seccfg machinery (MMMM record + HW-scrambled digest — it DOES exist on 2710, correction below) did not reject or rewrite anything in the emulated path, and its failure (`0xC002002F`) did not block erase/download (fail-open). What still gates seccfg CONTENT is boot-time and outside the DA session: LK's `sec_check_major_integrity_seccfg` (SHA-256 + HACC digest) and the RPMB boot-info mirror — plus the unresolved question whether a *valid* record triggers in-DA regeneration (200EX01 session-proven behavior class; HACC-blocked in emu). |
 | Overall | **post-forge flash writes = possible** at the DA level (proven to the driver boundary; erase proven through the real handler end-to-end). Two honest limits: the data-phase state machine was not pumped end-to-end in emu (RTOS scheduler + HW checksum engine unmodeled — on silicon both are transparent), and sub-driver silicon protections are untested. |
 
+> **UPDATE (2026-10-26, later session):** both honest limits above are now closed —
+> the data-phase SM *was* pumped end-to-end in emu and the "HW checksum engine"
+> attribution is corrected (it is software). See §5 ERRATA/UPDATE at the end of this
+> note; the deliverable script is `docs/notes/da2_2710_flash_dataphase.py`.
+
 ---
 
 ## 1. The storage architecture (static, 2710EX01)
@@ -248,7 +253,131 @@ cd /root/mtkclient
 # per mode: calib | probe | seccfg
 # requires /tmp/opencode/efuse2710/harness.py (unicorn 2.1.4) and
 # /tmp/opencode/fw2710/x/da2_2710.bin
+
+# data-phase update (§5):
+/tmp/opencode/da1venv/bin/python docs/notes/da2_2710_flash_dataphase.py all  # exit 0
+# per mode: engine | pump | regen | semantics
 ```
 
 Confidence: high on everything quoted from executed runs (ops logs, model diffs, DA
 log lines); static claims are instruction-quoted. The emu-only caveats are §4.
+
+---
+
+## 5. ERRATA / UPDATE (2026-10-26, second session — data phase pumped end-to-end)
+
+Deliverable: `docs/notes/da2_2710_flash_dataphase.py` (modes `engine|pump|regen|semantics`,
+all exit 0; full log `flash_dataphase_all_output.txt`). Everything below is EXECUTED
+evidence in Unicorn (image `/tmp/opencode/fw2710/x/da2_2710.bin`), except where the
+disassembly is quoted. This section **supersedes** the two open items of §3/§4:
+the "data-phase SM not pumped" limit and the "HW checksum engine" attribution.
+
+### 5.1 [ERRATA] the download checksum engine is SOFTWARE, not HW
+
+* `initial_chksum_info` = `0x40000F50` (executed, rc=0). It **benchmarks 8 additive
+  word-sum candidates** (`0x400010D0..0x4000140C`, each a `sum-of-words` loop) against
+  a fake monotonic timer and **picks one into the function pointer at `0x400548F8`**
+  (executed pick = `0x400010D0`).
+* Executed identity check: the picked fn over 0x1000 scripted bytes returned
+  `0x1FDF800`; a python `sum(u32[i]) & 0xFFFFFFFF` replica returns the same — **the
+  engine is a plain 32-bit word-sum**. Convention: `(buf, len) -> r0`.
+* Per-chunk bookkeeping: `set_chunk_info` `0x4000105C` is a pure 0x20-byte memcpy
+  into the info struct; the report/dispatch path `0x40001504` calls the SAME picked
+  word-sum (`0x40001594` loads the `0x4006A560` candidate list).
+* **The prior "fatal spin" was never MMIO**: `thread_create` `0x400094CC` hits the
+  RTOS assert at thread.c:399 (empty highest-prio ready queue); the assert printer
+  `0x40007828` self-spins at `0x4000786C`. Modelled (capture + inline worker), the
+  state machine runs to completion.
+* Negotiation: the download driver stamps `<checksum>CHK_ADD|CHK_NO</checksum>` into
+  its own DOWNLOAD-FILE XML from config bit `[0x40068188]&1` (`0x4002AEEC`). Under
+  CHK_ADD the host's in-loop `OK@0x<hex>` ack carries the chunk's EXPECTED word-sum;
+  the producer computes the real engine over the received chunk (`0x400014D4`
+  dispatch) and compares at `0x400305D4`. Executed both ways (§5.3): correct value →
+  write proceeds; corrupted value → DA prints `USB checksum error. Host: 0x… /
+  Device: 0x…` (the Device field is its not-yet-updated accumulator — cosmetic),
+  sets `[ctx+0xE0]=0xC0040003` and the consumer **refuses the chunk** (no boundary
+  write). mtkclient always negotiates CHK_NO → **with CHK_NO there is NO post-write
+  read-back at all** (the pumped flow performs zero storage reads after the write).
+  Integrity mechanism on the transport; never consults session state, keys or efuse.
+
+### 5.2 The data-phase state machine (what actually runs)
+
+* `CMD:WRITE-PARTITION` handler `0x400022B4`: policy parse → `sec_get_seccfg`
+  (instrumentary; blank flash ⇒ `ret=c002002F`, fail-open) →
+  `Download [seccfg] with file:MEM://0x0:0x200` (`0x4002AE84`) → download driver
+  `0x4002AE50` → `initial_chksum_info` → producer → consumer → `Download_data end`.
+* **Two transport channels**, both decoded:
+  - *XML channel* — `SESSION` struct `0x405F0100`, `[+0]`=recv(buf,&max)/`[+4]`=send:
+    the DA sends the `FileSysOp EXISTS` query (answered `OK@0x0` = .sig absent) and
+    the `CMD:DOWNLOAD-FILE` XML (announce answer `OK@0x200`; the driver checks only
+    `'O','K'`, `0x4002AF74`). Non-OK reply ⇒ `0xC0010001` from `0x4002AF98`.
+  - *data channel* — table `0x40054A48` (`[+0]`→`0x4002AA28` packet reader,
+    `[+4]`→`0x4002AB08` sender), which reads **12-byte packets
+    `{0xFEEEEEEF, DT_PROTOCOL_FLOW=1, len}` + payload** over the session-op table
+    `0x40054A58+8/+0xC` (magic mismatch ⇒ `0xC0010005`; capacity shortfall ⇒
+    `0xC0010006`). Same wire format as mtkclient `xml_lib.xsend`.
+* The producer (`0x40030364`, runs inline) fills a 0x4C-byte staging slot of the
+  download buffer (`[0x40068188+0x14]`=packet_length `0x200000`, `+0x18`, `+0x1C`
+  buffer size — initialised by `0x4002F66C` from the RTOS thread-start path
+  `0x400093A4`; **if that init is skipped the chunk size computes 0 and the loop
+  spins** — this was the pump's blocking bug), then waits at `0x400306D8` for the
+  **consumer thread** (`thread_create`'d entry `0x400301D0`, arg 0) to drain the
+  slot. The consumer pops the ready slot (`0x4002FA5C`) and drives the real write
+  chain (`write bulk image`, `0x40030178`); on verify failure it can **erase the
+  written span via `OPS_TAB+4`** (`0x40030318..0x4003034C` — rollback-on-fail).
+* Pumped end-to-end with the forged session: `handler rc=0`, model write
+  `[(0xA00000, 0x200)]`, boundary `VERBATIM=True`, `content[:0x20] =
+  4d4d4d4d 04000000 3c000000 03000000 …` — lock_state=3 on the wire, byte-exact.
+
+### 5.3 [ANSWERED] the seccfg-regeneration question (both scenarios, byte-diffed)
+
+`mode regen` runs the full write flow twice — S1 empty flash, S2 flash seeded with a
+VALID record (built with the modelled digest, see §5.4):
+
+| scenario | during flow | write | pre→post diff | post-write `sec_get_seccfg` |
+|---|---|---|---|---|
+| S1 empty | `ret=c002002F` (fail-open) | `0x200` B verbatim | 512 B, `ff→4d…` | `rc=c002002F`, state global=0, no record extracted |
+| S2 seeded valid (`lock_state=1`, digest=SEJ(SHA256(hdr))) | **`ret=0`** (validator ACCEPTS the seeded record — the digest model is self-consistent) | `0x200` B verbatim | 485 B: `@0x0C 01→03` (our lock_state), `@0x1C…` our digest slot | state global=**1**, **lock_state_of_surviving_record=3** (rc still `c002002F` — the uploaded record's filler digest fails, and the getter STILL extracts lock_state=3 — fail-open again) |
+
+**Answer: NO regeneration exists on the 2710 write path.** In both scenarios the DA
+wrote the uploaded bytes verbatim and did NOT regenerate, re-sign or replace them;
+a *succeeding* `sec_get_seccfg` only flips the slot-state global
+(`0x4006F168`: 1=main/2=backup) and feeds the policy getter. The 200EX01
+"SEC regeneration" class does not exist here; the 200EX01 readback normalization is
+a read-path/erase-order artifact there, as `re-write-chain.md` concluded.
+
+### 5.4 [SEMANTICS] which seccfg bytes are unlock-relevant, and the honest boundary
+
+Record layout (mtkclient `Library/Hardware/seccfg.py` == the 2710 validator
+`0x40034F14` == LK's boot-time validator): `+0x00` magic `0x4D4D4D4D`; `+0x04` ver=4;
+`+0x08` size=0x3C; **`+0x0C` lock_state (1=locked, 3=unlocked — THE unlock field)**;
+`+0x10` dm_verity; `+0x14` sboot; `+0x18` sentinel `0x45454545`; `+0x1C` enc_hash
+(0x20 B) = `SEJ_scramble(SHA256(hdr[0:0x1C]))` — the only content DA/LK verify, and
+it covers exactly the 0x1C header (so lock_state IS digest-protected).
+
+* DA-side write-path transform of these bytes: **NONE** (executed: the record lands
+  byte-exact; the digest is neither recomputed nor verified on the write path — a
+  garbage-digest record was written without complaint).
+* The validator's digest = SEJ(SHA256(hdr[0:0x1C])) with the key the REAL loader
+  `0x400348F0` places at `0x1000A060` (zeros when no `0x014D4D4D` custom record is
+  harvested — observed) and IV = the fixed seed table `0x40053AE4`
+  (`9ED40400 00E884A1 E3F083BD 2F4E6D8A`, LE). The seeded S2 record built with this
+  model was ACCEPTED by the real validator code (ret=0) — model/device consistency
+  executed, not assumed.
+* **One-line answer** to "can a forged session write an unlock-relevant seccfg that
+  survives to LK unchanged?": **Yes at the DA layer — the forged session writes the
+  SecCfgV4 record byte-exact and nothing on the 2710 write path rewrites or rejects
+  it — but the record only *matters* if its `enc_hash` is a correct on-device
+  SEJ(SHA256(header)) digest, because LK's `sec_check_major_integrity_seccfg`
+  re-derives it at boot (and the RPMB boot-info mirror re-locks on mismatch); the
+  DA session neither helps nor hinders that part.**
+
+### 5.5 Emu plumbing notes (for reproducibility)
+
+Model-write cap lifted `0x200000→0x10000000` (`install_storage_bigcap`) — fl's cap
+silently DROPPED the full-partition ops[1] write. Worker injection is LR-gated: the
+consumer thread runs inline only at the producer's post-fill drain-wait
+(`EVENT_WAIT` with LR=`0x400306DC`); injecting at other waits preempts the producer
+with an empty staging buffer. The `MEM://` source_file does NOT use the fetch engine
+`0x4002AFD8` (that is the named-file path, efuse flow) — the bytes arrive as
+transport packets and land in the download buffer (observed base `0x80001000`).
